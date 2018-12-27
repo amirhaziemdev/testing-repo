@@ -22,7 +22,7 @@ import time
 camera = 0
 #Flags/switches
 darkbg = False
-overlay = False
+overlay = True
 
 #Thresholds
 r_high = 1000
@@ -131,9 +131,13 @@ def mould_detection(frame):
         
             coordY = (460 - cY)/d
             [coordX, coordY] = [round(coordX, 2), round(coordY, 2)]
-            
+            #converting h,w to real sizes from pixel size
+            [h,w] = [round(h/d, 2), round(w/d, 2)]
+            area = round(h*w, 2)
             if overlay:
                 cv2.putText(image, "coords: ({},{})".format(coordX, coordY), (int(cX - radius),int(cY +radius) + 20), cv2.FONT_HERSHEY_COMPLEX_SMALL, 0.5, (0,0,255), thickness = 1)
+                cv2.putText(image, "height and width: ({},{})".format(h, w), (int(cX - radius),int(cY +radius) + 30), cv2.FONT_HERSHEY_COMPLEX_SMALL, 0.5, (0,0,255), thickness = 1)
+                cv2.putText(image, "area: ({})".format(area), (int(cX - radius),int(cY +radius) + 40), cv2.FONT_HERSHEY_COMPLEX_SMALL, 0.5, (0,0,255), thickness = 1)
                 cv2.line(image, (0, 460), (640, 460), color = 255)
                 cv2.line(image, (320, 0), (320, 480), color = 255)
                 cv2.circle(image, (320, 460), 5, (255, 0, 0), 1)
