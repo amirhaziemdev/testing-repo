@@ -7,6 +7,18 @@ Created on 28 Dec 2018
 Base code for GUI and openCV display obtained from @source.
 I added additional GUI functionalities and will add image processing code
 and threshold adjustment code later.
+
+Version 29/12/18
+Added image processing capabilities and overlay/darkbg options.
+Added extra GUI for controlling overlay/darkbg
+Fixed bug with command functions in overlay/darkbg buttons (bracket at function call was the culprit)
+Fixed bug with setting/getting overlay/darkbg functions.
+
+Note to self:
+Add options to adjust camera specs. Resolutions, distances, angle, field of view, etc.
+For manual adjustments (29/12/18)
+
+
 '''
 import numpy as np
 from imutils import contours
@@ -18,6 +30,7 @@ import cv2
 import PIL.Image, PIL.ImageTk
 import time
 from Tools.scripts.texi2html import increment
+from tkinter import StringVar
 
 #default values, can be included in GUI
 cam = 0
@@ -43,24 +56,32 @@ class App():
         self.btn_snapshot.pack(anchor=tkinter.CENTER, expand = True)
         
         #initialise values
-        [self.thresh_px_lo, self.thresh_px_hi, self.thresh_rd_lo, self.thresh_rd_hi] = [20000, 1, 12, 1000]
+        [self.thresh_px_lo, self.thresh_px_hi, self.thresh_rd_lo, self.thresh_rd_hi] = [1, 20000, 12, 1000]
+        var1 = StringVar(window)
+        var2 = StringVar(window)
+        var3 = StringVar(window)
+        var4 = StringVar(window)
+        var1.set("20000")
+        var2.set("1")
+        var3.set("1000")
+        var4.set("12")
         self.darkbg = False
         self.overlay = True
         
         #sliders/spinboxes for controlling threshold
-        self.sliders_px_hi = tkinter.Spinbox(window, from_=0, to=10000, command = self.set_thresh, increment = 100.0)
+        self.sliders_px_hi = tkinter.Spinbox(window, from_=0, to=20000, command = self.set_thresh, increment = 100.0, textvariable = var1)
         self.sliders_px_hi.pack(anchor = tkinter.E)
-        self.sliders_px_lo = tkinter.Spinbox(window, from_=0, to=100, command = self.set_thresh)
+        self.sliders_px_lo = tkinter.Spinbox(window, from_=0, to=100, command = self.set_thresh, textvariable = var2)
         self.sliders_px_lo.pack(anchor = tkinter.E)
-        self.sliders_rd_hi = tkinter.Spinbox(window, from_=0, to=10000, command = self.set_thresh, increment = 100.0)
+        self.sliders_rd_hi = tkinter.Spinbox(window, from_=0, to=10000, command = self.set_thresh, increment = 100.0, textvariable = var3)
         self.sliders_rd_hi.pack(anchor = tkinter.E)
-        self.sliders_rd_lo = tkinter.Spinbox(window, from_=0, to=100, command = self.set_thresh)
+        self.sliders_rd_lo = tkinter.Spinbox(window, from_=0, to=100, command = self.set_thresh, textvariable = var4)
         self.sliders_rd_lo.pack(anchor = tkinter.E)
         
         #buttons for controlling overlay, darkbg
-        self.btn_darkbg = tkinter.Button(window, text = "Dark Background", width = 20, command = self.set_darkbg())
+        self.btn_darkbg = tkinter.Button(window, text = "Dark Background", width = 20, command = self.set_darkbg)
         self.btn_darkbg.pack(side = 'left')
-        self.btn_overlay = tkinter.Button(window, text = "Overlay", width = 20, command = self.set_overlay())
+        self.btn_overlay = tkinter.Button(window, text = "Overlay", width = 20, command = self.set_overlay)
         self.btn_overlay.pack(side = 'left')
 #         self.btn_snapshot = tkinter.Button(window, text = "Snapshot", width = 50, command = self.snapshot)
 #         self.btn_snapshot.pack(anchor=tkinter.CENTER, expand = True)
@@ -75,30 +96,32 @@ class App():
     def set_darkbg(self):
         if self.darkbg == True:
             self.darkbg = False
-        else:
+        elif self.darkbg == False:
             self.darkbg = True
-            
+        print('darkbg: ', self.darkbg)
+        
     def get_darkbg(self):
         return self.darkbg
     
     def set_overlay(self):
         if self.overlay == True:
             self.overlay = False
-        else:
+        elif self.overlay == False:
             self.overlay = True
-            
+        print('overlay: ', self.overlay)
+        
     def get_overlay(self):
         return self.overlay
     
     def set_thresh(self):
         self.thresh_px_hi = self.sliders_px_hi.get()
-        print("current hi thresh value: ",self.thresh_px_hi)
+        print("current hi thresh px value: ",self.thresh_px_hi)
         self.thresh_px_lo = self.sliders_px_lo.get()
-        print("current low thresh value: ",self.thresh_px_lo)
+        print("current low thresh px value: ",self.thresh_px_lo)
         self.thresh_rd_hi = self.sliders_rd_hi.get()
-        print("current low thresh value: ",self.thresh_px_lo)
+        print("current hi thresh rd value: ",self.thresh_rd_hi)
         self.thresh_rd_lo = self.sliders_rd_lo.get()
-        print("current low thresh value: ",self.thresh_px_lo)
+        print("current low thresh rd value: ",self.thresh_rd_lo)
         
     def get_thresh(self):
         return [int(self.thresh_px_lo), int(self.thresh_px_hi), int(self.thresh_rd_lo), int(self.thresh_rd_hi)]
@@ -203,11 +226,11 @@ class App():
                     cv2.circle(image, (320, 460), 5, (255, 0, 0), 1)
                     self.feed = image
                 else:
-                    cv2.putText(thresh, "coords: ({},{})".format(coordX, coordY), (int(cX - radius),int(cY +radius) + 20), cv2.FONT_HERSHEY_COMPLEX_SMALL, 0.5, (0,0,255), thickness = 1)
-                    cv2.line(thresh, (0, 460), (640, 460), color = 255)
-                    cv2.line(thresh, (320, 0), (320, 480), color = 255)
-                    cv2.circle(thresh, (320, 460), 5, (255, 0, 0), 1)
-                    self.feed = thresh
+#                     cv2.putText(thresh, "coords: ({},{})".format(coordX, coordY), (int(cX - radius),int(cY +radius) + 20), cv2.FONT_HERSHEY_COMPLEX_SMALL, 0.5, (0,0,255), thickness = 1)
+#                     cv2.line(thresh, (0, 460), (640, 460), color = 255)
+#                     cv2.line(thresh, (320, 0), (320, 480), color = 255)
+#                     cv2.circle(thresh, (320, 460), 5, (255, 0, 0), 1)
+                    self.feed = image
     
         
         return self.feed
@@ -237,6 +260,7 @@ class MyVideoCapture():
         else:
             return (ret, None)
     
+    #in the event of delete window
     def __del__(self):
         if self.vid.isOpened():
             self.vid.release()
