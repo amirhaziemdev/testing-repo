@@ -13,10 +13,12 @@ Added image processing capabilities and overlay/darkbg options.
 Added extra GUI for controlling overlay/darkbg
 Fixed bug with command functions in overlay/darkbg buttons (bracket at function call was the culprit)
 Fixed bug with setting/getting overlay/darkbg functions.
+Fixed minor alignment problems with GUI widgets
 
 Note to self:
 Add options to adjust camera specs. Resolutions, distances, angle, field of view, etc.
-For manual adjustments (29/12/18)
+For manual adjustments. Fix alignments for buttons and spinboxes. Please also add text/label beside
+(or inside) every spinbox/options/buttons (29/12/18)
 
 
 '''
@@ -40,6 +42,7 @@ f = 0.375 #factor by which the distance is multiplied
 
 class App():
     def __init__(self, window, window_title, video_source=cam):
+        #init everything
         self.window = window
         self.window.title(window_title)
         self.video_source = video_source
@@ -93,26 +96,31 @@ class App():
         self.window.mainloop()
     
     #boolean, will return true or false
+    #function call for setting overlay true/false from overlay button. called at __init__
     def set_darkbg(self):
         if self.darkbg == True:
             self.darkbg = False
         elif self.darkbg == False:
             self.darkbg = True
         print('darkbg: ', self.darkbg)
-        
+    
+    #function call for returning darkbg True/false. called at overlay option in mould_detection
     def get_darkbg(self):
         return self.darkbg
     
+    #function call for setting overlay true/false from overlay button. called at __init__
     def set_overlay(self):
         if self.overlay == True:
             self.overlay = False
         elif self.overlay == False:
             self.overlay = True
         print('overlay: ', self.overlay)
-        
+    
+    #function call for returning overlay True/false. called at overlay option in mould_detection
     def get_overlay(self):
         return self.overlay
     
+    #function call for setting thresh values, called at spinboxes in __init__
     def set_thresh(self):
         self.thresh_px_hi = self.sliders_px_hi.get()
         print("current hi thresh px value: ",self.thresh_px_hi)
@@ -122,10 +130,12 @@ class App():
         print("current hi thresh rd value: ",self.thresh_rd_hi)
         self.thresh_rd_lo = self.sliders_rd_lo.get()
         print("current low thresh rd value: ",self.thresh_rd_lo)
-        
+    
+    #function call for getting the current thresh values. called every time at mould_detection()
     def get_thresh(self):
         return [int(self.thresh_px_lo), int(self.thresh_px_hi), int(self.thresh_rd_lo), int(self.thresh_rd_hi)]
-        
+    
+    #function call for snapshot button
     def snapshot(self):
         #get a frame from video source
         ret, frame = self.vid.get_frame()
@@ -153,21 +163,39 @@ class App():
     
     def mould_detection(self,frame):
         image = frame
+        #initialising self.feed to current frame for debugging
+        #program complains when there's no initial value for self.feed (argument called before declaration)
         self.feed = frame
+        
+        #import thresh values for everything from self.get
         [pxthresh_low, pxthresh_high, r_low, r_high] = self.get_thresh()
+        
+        #import boolean values from self.get
         darkbg =  self.get_darkbg()
         overlay = self.get_overlay()
+        
+        #image processing algorithm starts here
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    #     gray = cv2.cvtColor(gray, cv2.COLOR_BGR2GRAY)
+        
+        #this is for deciding if the background is dark or light
+        #darkbg == True means there is a dark background behind OOI, false means light background
         if darkbg:
             thresh = cv2.threshold(gray, 100, 255, cv2.THRESH_BINARY)[1]
         else:
             thresh = cv2.threshold(gray, 100, 255, cv2.THRESH_BINARY_INV)[1]
         
         labels = measure.label(thresh, neighbors=8, background=0)
+        
+        #Gaussian blur used for more precise image mapping, i.e. blurring so that the light and dark
+        #pixels clump together, giving us a good region of interest. will be filtered further
+        #using thresholds.
         blur = cv2.GaussianBlur(gray,(5,5),0)
+        
+        #thresholding with BINARY and OTSU thresholding. recommended in some website I forgot to credit :(
         ret3,th3 = cv2.threshold(blur,0,255,cv2.THRESH_BINARY+cv2.THRESH_OTSU)
         thresh = th3
+        
+        #init masks in ndarray format (compatible with format of frames obtained from 
         mask = np.zeros(thresh.shape, dtype="uint8")
         
         #loop over unique components
@@ -182,24 +210,27 @@ class App():
     
             #if the number of pixels in the component is small enough
             # then add it to our mask of small blobs
-            
             if numPixels > pxthresh_low and numPixels < pxthresh_high:
                 mask = cv2.add(mask, labelMask)
                 
         
+        #contour processes which I never really got, hehe
+        #this should detect the contours of the OOI and highlight them for us
         cnts = cv2.findContours(mask.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         cnts = imutils.grab_contours(cnts)
+        
+        #debugging step for when there's no detectable objects/holes
         try:
             cnts = contours.sort_contours(cnts)[0]
         except:
-            print("No holes detected!")
-        #loop over contours
+            print("No object detected within threshold!\nCheck:\n1)Threshold values, and\n2)Debugging steps")
+            
+        #loop over contours, identify which ones fit all thresh values, highlight them with rectangles and circles,
+        #return their centers and dimensions (radius, height, width, etc.) and print them on each frame with labels
         for i, c in enumerate(cnts):
             (x, y, w, h) = cv2.boundingRect(c)
             ((cX, cY), radius) = cv2.minEnclosingCircle(c)
             
-    #         if radius > r_high or radius < r_low:
-    #             cnts[i] = 0
             if radius < r_high and radius > r_low:
                 if overlay:
                     cv2.circle(image, (int(cX), int(cY)), int(radius), (0,0,255), 3)
@@ -214,22 +245,24 @@ class App():
             
                 coordY = (460 - cY)/d
                 [coordX, coordY] = [round(coordX, 2), round(coordY, 2)]
-                #converting h,w to real sizes from pixel size
+                #converting h,w to real sizes from pixel size. 
+                #rounding to accommodate int values only for pixels
                 [h,w] = [round(h/d, 2), round(w/d, 2)]
                 area = round(h*w, 2)
                 if overlay:
                     cv2.putText(image, "coords: ({},{})".format(coordX, coordY), (int(cX - radius),int(cY +radius) + 20), cv2.FONT_HERSHEY_COMPLEX_SMALL, 0.5, (0,0,255), thickness = 1)
                     cv2.putText(image, "height and width: ({},{})".format(h, w), (int(cX - radius),int(cY +radius) + 30), cv2.FONT_HERSHEY_COMPLEX_SMALL, 0.5, (0,0,255), thickness = 1)
                     cv2.putText(image, "area: ({})".format(area), (int(cX - radius),int(cY +radius) + 40), cv2.FONT_HERSHEY_COMPLEX_SMALL, 0.5, (0,0,255), thickness = 1)
+                    #principle axes, with working center
                     cv2.line(image, (0, 460), (640, 460), color = 255)
                     cv2.line(image, (320, 0), (320, 480), color = 255)
                     cv2.circle(image, (320, 460), 5, (255, 0, 0), 1)
                     self.feed = image
                 else:
 #                     cv2.putText(thresh, "coords: ({},{})".format(coordX, coordY), (int(cX - radius),int(cY +radius) + 20), cv2.FONT_HERSHEY_COMPLEX_SMALL, 0.5, (0,0,255), thickness = 1)
-#                     cv2.line(thresh, (0, 460), (640, 460), color = 255)
-#                     cv2.line(thresh, (320, 0), (320, 480), color = 255)
-#                     cv2.circle(thresh, (320, 460), 5, (255, 0, 0), 1)
+                    cv2.line(thresh, (0, 460), (640, 460), color = 255)
+                    cv2.line(thresh, (320, 0), (320, 480), color = 255)
+                    cv2.circle(thresh, (320, 460), 5, (255, 0, 0), 1)
                     self.feed = image
     
         
