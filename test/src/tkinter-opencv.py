@@ -15,6 +15,14 @@ Fixed bug with command functions in overlay/darkbg buttons (bracket at function 
 Fixed bug with setting/getting overlay/darkbg functions.
 Fixed minor alignment problems with GUI widgets
 
+Version 3/1/2019
+Added extra functions (not called) for mold ID #
+Added class Mold to make Mold objects so it's OOP 
+
+Version 4/1/2019
+Added manual cam width and height. In the future this can be fetched from the actual camera data.
+
+
 Note to self:
 Add options to adjust camera specs. Resolutions, distances, angle, field of view, etc.
 For manual adjustments. Fix alignments for buttons and spinboxes. Please also add text/label beside
@@ -39,6 +47,12 @@ cam = 0
 d = 15 #cm
 de = 40 #cm
 f = 0.375 #factor by which the distance is multiplied
+
+#constants
+cam_width = 640
+cam_height = 480
+
+
 
 class App():
     def __init__(self, window, window_title, video_source=cam):
@@ -69,7 +83,7 @@ class App():
         var3.set("1000")
         var4.set("12")
         self.darkbg = False
-        self.overlay = True
+        self.overlay = False
         
         #sliders/spinboxes for controlling threshold
         self.sliders_px_hi = tkinter.Spinbox(window, from_=0, to=20000, command = self.set_thresh, increment = 100.0, textvariable = var1)
@@ -94,6 +108,13 @@ class App():
         self.update()
         
         self.window.mainloop()
+    
+    def create_new_mold(self, ID, status):
+        #instantiate a new mold
+        mold = Mold(ID, status)
+        print(ID, status)
+        return mold
+    
     
     #boolean, will return true or false
     #function call for setting overlay true/false from overlay button. called at __init__
@@ -139,14 +160,19 @@ class App():
     def snapshot(self):
         #get a frame from video source
         ret, frame = self.vid.get_frame()
-        
         if ret:
-            cv2.imwrite("frame-" + time.strftime("%d-%m-%Y-%H-%M-%S") + ".jpg", cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
+            cv2.imwrite("cardoor-" + time.strftime("%d-%m-%Y-%H-%M-%S") + ".jpg", cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
+            print("Snapshot taken! Directory:")
+            print("cardoor-" + time.strftime("%d-%m-%Y-%H-%M-%S") + ".jpg")
     
     def update(self):
         #get a frame from video source
         ret,frame = self.vid.get_frame()
-        
+        '''
+        important point: please update the status at ID in the Tkinter window with respect to its ID here.
+        Definition of region of interest will be crucial to this application.
+        Also please create text box to update the status at ROI
+        '''
         if ret:
             frame = self.mould_detection(frame)
             self.photo = PIL.ImageTk.PhotoImage(image = PIL.Image.fromarray(frame))
@@ -213,7 +239,6 @@ class App():
             if numPixels > pxthresh_low and numPixels < pxthresh_high:
                 mask = cv2.add(mask, labelMask)
                 
-        
         #contour processes which I never really got, hehe
         #this should detect the contours of the OOI and highlight them for us
         cnts = cv2.findContours(mask.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -225,6 +250,12 @@ class App():
         except:
             print("No object detected within threshold!\nCheck:\n1)Threshold values, and\n2)Debugging steps")
             
+        '''
+        more filtering for noise should be added here. should take the average number of times the pixel coords appear within frame
+        and take those only as the OOI.
+        
+        '''
+        
         #loop over contours, identify which ones fit all thresh values, highlight them with rectangles and circles,
         #return their centers and dimensions (radius, height, width, etc.) and print them on each frame with labels
         for i, c in enumerate(cnts):
@@ -238,31 +269,32 @@ class App():
                     cv2.putText(image, "hole # {}".format(i+1), (x,y -15), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0,0,255), 2)
                     cv2.rectangle(image, (int(cX-(w/2)), int(cY-(h/2))), (int(cX+(w/2)), int(cY+(h/2))), (255,0,0), 2)
             
-                if cX > 320:
-                    coordX = (cX - 320)/d
+                if cX > (cam_width/2):
+                    coordX = (cX - (cam_width/2))/d
                 else:
-                    coordX = -(320 - cX)/d
+                    coordX = -((cam_width/2) - cX)/d
             
-                coordY = (460 - cY)/d
+                coordY = ((cam_height-20) - cY)/d
                 [coordX, coordY] = [round(coordX, 2), round(coordY, 2)]
                 #converting h,w to real sizes from pixel size. 
                 #rounding to accommodate int values only for pixels
                 [h,w] = [round(h/d, 2), round(w/d, 2)]
                 area = round(h*w, 2)
+                #check for overlay
                 if overlay:
                     cv2.putText(image, "coords: ({},{})".format(coordX, coordY), (int(cX - radius),int(cY +radius) + 20), cv2.FONT_HERSHEY_COMPLEX_SMALL, 0.5, (0,0,255), thickness = 1)
                     cv2.putText(image, "height and width: ({},{})".format(h, w), (int(cX - radius),int(cY +radius) + 30), cv2.FONT_HERSHEY_COMPLEX_SMALL, 0.5, (0,0,255), thickness = 1)
                     cv2.putText(image, "area: ({})".format(area), (int(cX - radius),int(cY +radius) + 40), cv2.FONT_HERSHEY_COMPLEX_SMALL, 0.5, (0,0,255), thickness = 1)
                     #principle axes, with working center
-                    cv2.line(image, (0, 460), (640, 460), color = 255)
-                    cv2.line(image, (320, 0), (320, 480), color = 255)
-                    cv2.circle(image, (320, 460), 5, (255, 0, 0), 1)
+                    cv2.line(image, (0, int(cam_height-20)), (cam_width, int(cam_height-20)), color = 255)
+                    cv2.line(image, (int(cam_width/2), 0), (int(cam_width/2), cam_height), color = 255)
+                    cv2.circle(image, (int(cam_width/2), int(cam_height-20)), 5, (255, 0, 0), 1)
                     self.feed = image
                 else:
 #                     cv2.putText(thresh, "coords: ({},{})".format(coordX, coordY), (int(cX - radius),int(cY +radius) + 20), cv2.FONT_HERSHEY_COMPLEX_SMALL, 0.5, (0,0,255), thickness = 1)
-                    cv2.line(thresh, (0, 460), (640, 460), color = 255)
-                    cv2.line(thresh, (320, 0), (320, 480), color = 255)
-                    cv2.circle(thresh, (320, 460), 5, (255, 0, 0), 1)
+                    cv2.line(image, (0, int(cam_height-20)), (cam_width, int(cam_height-20)), color = 255)
+                    cv2.line(image, (int(cam_width/2), 0), (int(cam_width/2), cam_height), color = 255)
+                    cv2.circle(image, (int(cam_width/2), int(cam_height-20)), 5, (255, 0, 0), 1)
                     self.feed = image
     
         
@@ -297,8 +329,23 @@ class MyVideoCapture():
     def __del__(self):
         if self.vid.isOpened():
             self.vid.release()
-            
-            
+
+class Mold():
+    def __init__(self, ID, status):
+        self.ID = ID
+        self.status = status
+    
+    def get_ID(self):
+        return self.ID
+    
+    def get_status(self):
+        return self.status
+    
+    #call for destroy
+    def destroy(self):
+        self.ID = []
+        self.status = False
+                    
 def main():
     App(tkinter.Tk(), "tkinter and opencv")
     
