@@ -28,6 +28,10 @@ ap.add_argument("-v", "--value", type=int, help="set V threshold value")
 ap.add_argument("-d", "--darkbg", type=str, help="set darkbg options True/False")
 args = vars(ap.parse_args())
 
+#constants for defining region of interest aka image segmentation
+c1 = 360
+r1 = 360
+
 if not args.get("value", False):
     print("No threshold preference given.\nSetting default threshold value to 127...")
     v_thresh = 127
@@ -44,6 +48,7 @@ else:
 
 
 img = cv.imread('cardoor_test_photos/cardoor-07-01-2019-14-29-21.jpg',0)
+# img = img[c1:c1+25,r1:r1+25]
 img = cv.medianBlur(img,5)
 if not darkbg:
     ret,th1 = cv.threshold(img,v_thresh,255,cv.THRESH_BINARY)
