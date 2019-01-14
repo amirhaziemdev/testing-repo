@@ -8,6 +8,7 @@ Added to repo
 
 This is for solely controlling the conveyor safety feature at plate one of the conveyor belt
 '''
+from data_structures import calculate_ROI_corners
 '''
 Created on 28 Dec 2018
 
@@ -32,6 +33,13 @@ Added class Mold to make Mold objects so it's OOP
 Version 4/1/2019
 Added manual cam width and height constants (adjustable at source). In the future this can be fetched from the actual camera data.
 Maybe add a GUI setting functionality for this OR do an INIT .txt file to fetch camera data.
+
+Version 14/1/2019
+Some major changes:
+Erased overwriting thresh frame with another thresh (th3 line commented out). Should make it adjustable in GUI or txt file (pick one) <--- this has been causing inaccuracies in detection
+Implemented ROI functionalities. Might not work but we'll give it a try. <---- first implementation
+Implemented zero-indexing for mold identifiers
+Implemented y_thresh for focusing on "higher than y_thresh pixel coordinates" i.e. ONLY FOCUS ON LOWER Y PIXELS. Should change this to ratio of the resolution or something, this couldn't possibly work with different cameras
 
 
 Note to self:
@@ -66,11 +74,34 @@ f = 0.375 #factor by which the distance is multiplied
 cam_width = 640
 cam_height = 480
 center_tolerance = 0.33 #in percentage of the height and width of the OOI/mold
+y_thresh = 100 #only focus on the lower y_thresh pixels
 
 #GUI constant
 #label frame paddings
 paddingx = 35
 paddingy = 10
+
+#defining outer boundaries of ROI, in pixels
+'''
+format is: [[x,y,w,h]
+                ...
+            ]
+where (x,y) is the upper left hand corner of the rectangle
+w is the width of the rectangle,
+and h is its height.
+This has been hard-coded in (duh!), please make it smarter 
+'''
+tempH = 150
+tempY = 230
+tempROI = [[0,tempY,100,tempH]
+           [80, tempY, 80, tempH]
+           [160, tempY, 70, tempH]
+           [250, tempY, 80, tempH]
+           [310, tempY, 70, tempH]
+           [380, tempY, 70, tempH]
+           [450, tempY, 80, tempH]
+           [530, tempY, 100, tempH]]
+
 
 class App():
     def __init__(self, window, window_title, video_source=cam):
@@ -93,7 +124,7 @@ class App():
         #init regions of interest list
         #if any centers of rectangles fall within any of the ROIs, they automatically become OOIs. (i.e. status set to '1')
         self.ROIs = []
-        self.ROIs.append([])
+        self.set_ROIs()
         
         #initialise values
         [self.thresh_px_lo, self.thresh_px_hi, self.thresh_rd_lo, self.thresh_rd_hi] = [1, 20000, 12, 1000]
@@ -116,6 +147,7 @@ class App():
 
         #init statlist
         self.statlist = []
+        self.status = [0,0,0,0,0,0,0,0]
         
         for i in range(8):
             self.statlist.append(StringVar(value = '0'))
@@ -138,7 +170,8 @@ class App():
         varfocalpoint = StringVar(window)
         varfocalpoint.set('100')
         vardistance = StringVar(window)
-        self.entry_focal_point = Entry(window, textvariable = varfocalpoint).pack(side=LEFT)
+        vardistance.set('100')
+#         self.entry_focal_point = Entry(window, textvariable = varfocalpoint).pack(side=LEFT)
 #         self.entry_vardistance = Entry(window, textvariable = vardistance).pack(side=LEFT)
         
         #sliders/spinboxes for controlling threshold
@@ -165,8 +198,25 @@ class App():
         self.update()
         
         self.window.mainloop()
+    
+    #will only be called once, ROIs are RIGID
+    def set_ROIs(self):
+        for i, j in enumerate(tempROI):
+            self.ROIs.append(self.calculate_ROI_corners(j[0],j[1],j[2],j[3]))
         
-    def calculate_ROI_corners(self, x, y, h, w):
+        print(self.ROIs)
+    
+    #detects if centers fall within the ROI and updates the current status
+    def update_status(self, cX, cY):
+        for i, j in enumerate(self.ROIs):
+            if cX > j[0] and cX < j[1] and cY > j[2] and cY < j[3]:
+                self.statlist[i].set('1')
+            else:
+                self.statlist[i].set('0')
+    
+    #This function takes in (x,y) coordinates (upper left hand corner) of a triangle
+    #and returns the two opposite corners of a scaled-down ROI
+    def calculate_ROI_corners(self, x, y, w, h):
         #this should be more of scaling down the bounding rects and returning the opposite corners of a rect
         #(i.e. upper left and lower right corners)
         #specify the centres first
@@ -181,7 +231,7 @@ class App():
         Rx2 = round(Rx2, 0)
         Ry2 = cY + (h*(center_tolerance/2))
         Ry2 = round(Ry2, 0)
-        return [Rx1, Ry1, Rx2, Ry2]
+        return [Rx1, Ry1, Rx2, Ry2] 
         
     def send_command(self):
         print('Command sent! Clearing all status...')
@@ -197,13 +247,15 @@ class App():
             self.statlist[ID].set('1')
         else:
             self.statlist[ID].set('0')
-        
+    
+    #unused
     def create_new_ROI(self):
         temp = cv2.selectROI()
         self.ROIs.append(temp)
         print('Appended ', temp)
         return self.ROIs
     
+    #unused
     def create_new_mold(self, ID, status):
         #instantiate a new mold
         self.mold = Mold(ID, status)
@@ -317,9 +369,9 @@ class App():
         
         #thresholding with BINARY and OTSU thresholding. recommended in some website I forgot to credit :(
         #edit 12/1/19 WHY DID I OVERWRITE THE THRESH??????
-        ret3,th3 = cv2.threshold(blur,0,255,cv2.THRESH_BINARY+cv2.THRESH_OTSU)
-        if ret3:
-            thresh = th3
+#         ret3,th3 = cv2.threshold(blur,0,255,cv2.THRESH_BINARY+cv2.THRESH_OTSU)
+#         if ret3:
+#             thresh = th3
         
         #init masks in ndarray format (compatible with format of frames obtained from 
         mask = np.zeros(thresh.shape, dtype="uint8")
@@ -358,24 +410,30 @@ class App():
         more filtering for noise should be added here. should take the average number of times the pixel coords appear within frame
         and take those only as the OOI.
         
-        edit 11/1/19 this might be a little difficult to implement? involved dynamic lists which shouldn't be too hard but speed is
+        edit 11/1/19 this might be a little difficult to implement? involves dynamic lists which shouldn't be too hard but speed is
         a factor in this implementation so maybe not? got another ROI implementation coming which should overcome this problem
         '''
         
         #loop over contours, identify which ones fit all thresh values, highlight them with rectangles and circles,
         #return their centers and dimensions (radius, height, width, etc.) and print them on each frame with labels
+        j = 0
+#         tempROI = []
         for i, c in enumerate(cnts):
             (x, y, w, h) = cv2.boundingRect(c)
             ((cX, cY), radius) = cv2.minEnclosingCircle(c)
             
+            for i, j in enumerate(self.ROIs):
+                cv2.rectangle(image, (j[0],j[1]), (j[2], j[3]), (255,0,0), 2)
+            
             #if within specified radius, might be wise to renumber the bounding boxes.
-            j = 0
             if radius < r_high and radius > r_low:
-                if overlay:
+                if overlay and y > y_thresh:
+#                     tempROI.append(self.calculate_ROI_corners(x, y, w, h))
                     cv2.circle(image, (int(cX), int(cY)), int(radius), (0,0,255), 3)
                     print("circle no. {}".format(j+1), "radius:", radius, "center:", cX, ",", cY)
                     cv2.putText(image, "hole # {}".format(j+1), (x,y -15), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0,0,255), 2)
                     cv2.rectangle(image, (int(x), int(y)), (int(x+w), int(y+h)), (255,0,0), 2)
+                    self.update_status(cX, cY)
                     j+=1
             
                 if cX > (cam_width/2):
@@ -406,7 +464,7 @@ class App():
                     cv2.circle(image, (int(cam_width/2), int(cam_height-20)), 5, (255, 0, 0), 1)
                     self.feed = image
     
-        
+#         self.ROIs = tempROI
         return self.feed
 
 
