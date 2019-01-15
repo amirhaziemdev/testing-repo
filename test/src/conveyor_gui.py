@@ -8,7 +8,6 @@ Added to repo
 
 This is for solely controlling the conveyor safety feature at plate one of the conveyor belt
 '''
-from data_structures import calculate_ROI_corners
 '''
 Created on 28 Dec 2018
 
@@ -41,6 +40,13 @@ Implemented ROI functionalities. Might not work but we'll give it a try. <---- f
 Implemented zero-indexing for mold identifiers
 Implemented y_thresh for focusing on "higher than y_thresh pixel coordinates" i.e. ONLY FOCUS ON LOWER Y PIXELS. Should change this to ratio of the resolution or something, this couldn't possibly work with different cameras
 
+Version 15/1/2019
+Added sending mechanism (only prints a string message, have yet to include serial communications)
+Debugged the send_command mechanism and push button
+Changed default values of visible molds (nothing major)
+Still needs work: timing for update of molds, can it be something like 1.25 - 1.5 seconds or something?
+To temporarily debug this, the text boxes store the '1' value indefinitely if something is detected within the boxes
+Changed the default ROI center tolerance to 0.5 (50%). This needs to be adjusted
 
 Note to self:
 Add options to adjust camera specs. Resolutions, distances, angle, field of view, etc.
@@ -60,7 +66,6 @@ import cv2
 import PIL.Image, PIL.ImageTk
 import time
 from tkinter import *
-from Tools.scripts.texi2html import increment
 
 #default values, can be included in GUI
 #these settings should be in an .init file or something
@@ -73,8 +78,8 @@ f = 0.375 #factor by which the distance is multiplied
 #constants
 cam_width = 640
 cam_height = 480
-center_tolerance = 0.33 #in percentage of the height and width of the OOI/mold
-y_thresh = 100 #only focus on the lower y_thresh pixels
+center_tolerance = 0.75 #in percentage of the height and width of the OOI/mold
+y_thresh = 0 #only focus on the lower y_thresh pixels
 
 #GUI constant
 #label frame paddings
@@ -93,13 +98,14 @@ This has been hard-coded in (duh!), please make it smarter
 '''
 tempH = 150
 tempY = 230
-tempROI = [[0,tempY,100,tempH]
-           [80, tempY, 80, tempH]
-           [160, tempY, 70, tempH]
-           [250, tempY, 80, tempH]
-           [310, tempY, 70, tempH]
-           [380, tempY, 70, tempH]
-           [450, tempY, 80, tempH]
+tempROI = []
+tempROI = [[0, tempY, 100, tempH],
+           [80, tempY, 80, tempH],
+           [160, tempY, 70, tempH],
+           [250, tempY, 80, tempH],
+           [310, tempY, 70, tempH],
+           [380, tempY, 70, tempH],
+           [450, tempY, 80, tempH],
            [530, tempY, 100, tempH]]
 
 
@@ -121,13 +127,13 @@ class App():
         self.btn_snapshot = tkinter.Button(window, text = "Snapshot", width = 50, command = self.snapshot)
         self.btn_snapshot.pack(anchor=tkinter.CENTER, expand = True)
         
-        #init regions of interest list
+        #init empty regions of interest (ROI) list
         #if any centers of rectangles fall within any of the ROIs, they automatically become OOIs. (i.e. status set to '1')
         self.ROIs = []
         self.set_ROIs()
         
-        #initialise values
-        [self.thresh_px_lo, self.thresh_px_hi, self.thresh_rd_lo, self.thresh_rd_hi] = [1, 20000, 12, 1000]
+        #initialise values, at these values all molds can currently be seen
+        [self.thresh_px_lo, self.thresh_px_hi, self.thresh_rd_lo, self.thresh_rd_hi] = [1, 20000, 22, 1000]
         var1 = StringVar(window)
         var2 = StringVar(window)
         var3 = StringVar(window)
@@ -139,7 +145,7 @@ class App():
         var3.set(self.thresh_rd_hi)
         var4.set(self.thresh_rd_lo)
         self.darkbg = False
-        self.overlay = False
+        self.overlay = True
         
         #init labelframe for status/ID organiser
         labelframe = LabelFrame(window, text="ID/Status")
@@ -149,6 +155,7 @@ class App():
         self.statlist = []
         self.status = [0,0,0,0,0,0,0,0]
         
+        #init 8 StringVar variables
         for i in range(8):
             self.statlist.append(StringVar(value = '0'))
 
@@ -156,14 +163,14 @@ class App():
         use this code (self.st0.set('blah')) for updating ID and status of mold. let them be in functions
         '''
         
-        self.stat0 = Label(labelframe, textvariable=self.statlist[0], bg = 'white').pack(padx=paddingx, pady=paddingy, side=LEFT)
-        self.stat1 = Label(labelframe, textvariable=self.statlist[1], bg = 'white').pack(padx=paddingx, pady=paddingy, side=LEFT)
-        self.stat2 = Label(labelframe, textvariable=self.statlist[2], bg = 'white').pack(padx=paddingx, pady=paddingy, side=LEFT)
-        self.stat3 = Label(labelframe, textvariable=self.statlist[3], bg = 'white').pack(padx=paddingx, pady=paddingy, side=LEFT)
-        self.stat4 = Label(labelframe, textvariable=self.statlist[4], bg = 'white').pack(padx=paddingx, pady=paddingy, side=LEFT)
-        self.stat5 = Label(labelframe, textvariable=self.statlist[5], bg = 'white').pack(padx=paddingx, pady=paddingy, side=LEFT)
-        self.stat6 = Label(labelframe, textvariable=self.statlist[6], bg = 'white').pack(padx=paddingx, pady=paddingy, side=LEFT)
-        self.stat7 = Label(labelframe, textvariable=self.statlist[7], bg = 'white').pack(padx=paddingx, pady=paddingy, side=LEFT)
+        self.stat0 = Label(labelframe, textvariable=self.statlist[0], bg = 'white').pack(padx=paddingx, pady=paddingy, side=LEFT, expand = "yes")
+        self.stat1 = Label(labelframe, textvariable=self.statlist[1], bg = 'white').pack(padx=paddingx, pady=paddingy, side=LEFT, expand = "yes")
+        self.stat2 = Label(labelframe, textvariable=self.statlist[2], bg = 'white').pack(padx=paddingx, pady=paddingy, side=LEFT, expand = "yes")
+        self.stat3 = Label(labelframe, textvariable=self.statlist[3], bg = 'white').pack(padx=paddingx, pady=paddingy, side=LEFT, expand = "yes")
+        self.stat4 = Label(labelframe, textvariable=self.statlist[4], bg = 'white').pack(padx=paddingx, pady=paddingy, side=LEFT, expand = "yes")
+        self.stat5 = Label(labelframe, textvariable=self.statlist[5], bg = 'white').pack(padx=paddingx, pady=paddingy, side=LEFT, expand = "yes")
+        self.stat6 = Label(labelframe, textvariable=self.statlist[6], bg = 'white').pack(padx=paddingx, pady=paddingy, side=LEFT, expand = "yes")
+        self.stat7 = Label(labelframe, textvariable=self.statlist[7], bg = 'white').pack(padx=paddingx, pady=paddingy, side=LEFT, expand = "yes")
         
         #init Entry boxes here for focal point and distance of installment
         #this can maybe be compacted into a .txt file or something. too many options in GUI is NOT GOOD and NOT INTUITIVE
@@ -205,14 +212,21 @@ class App():
             self.ROIs.append(self.calculate_ROI_corners(j[0],j[1],j[2],j[3]))
         
         print(self.ROIs)
-    
+        
+    #to be sent to filling PLC
+    def convert_to_string(self):
+        value = self.statlist[0].get() + self.statlist[1].get()+ self.statlist[2].get()+ self.statlist[3].get()+ self.statlist[4].get()+ self.statlist[5].get()+ self.statlist[6].get()+ self.statlist[7].get()
+        print(value)
+        return value
     #detects if centers fall within the ROI and updates the current status
     def update_status(self, cX, cY):
         for i, j in enumerate(self.ROIs):
-            if cX > j[0] and cX < j[1] and cY > j[2] and cY < j[3]:
+            if cX > j[0] and cX < j[2] and cY > j[1] and cY < j[3]:
                 self.statlist[i].set('1')
-            else:
+            elif self.statlist[i].get()!='1':
                 self.statlist[i].set('0')
+#             print(self.statlist[0].get(),self.statlist[1].get(),self.statlist[2].get(),self.statlist[3].get(),self.statlist[4].get(),self.statlist[5].get(),self.statlist[6].get(),self.statlist[7].get())
+            #error here. see data structures: https://docs.python.org/3/tutorial/datastructures.html
     
     #This function takes in (x,y) coordinates (upper left hand corner) of a triangle
     #and returns the two opposite corners of a scaled-down ROI
@@ -231,7 +245,7 @@ class App():
         Rx2 = round(Rx2, 0)
         Ry2 = cY + (h*(center_tolerance/2))
         Ry2 = round(Ry2, 0)
-        return [Rx1, Ry1, Rx2, Ry2] 
+        return [int(Rx1), int(Ry1), int(Rx2), int(Ry2)] 
         
     def send_command(self):
         print('Command sent! Clearing all status...')
@@ -239,7 +253,9 @@ class App():
         missing implementation for sending over serial cable.
         please include (14/1/2019)
         '''
-        self.statlist[3].set('0')
+        print('String sent! string is: ', self.convert_to_string())
+        for i,j in enumerate(self.statlist):
+            self.statlist[i].set('0')
     
     #can reuse this function (renamed update status or something)
     def dummy_button_press(self, ID=3):
@@ -416,25 +432,24 @@ class App():
         
         #loop over contours, identify which ones fit all thresh values, highlight them with rectangles and circles,
         #return their centers and dimensions (radius, height, width, etc.) and print them on each frame with labels
-        j = 0
-#         tempROI = []
+        k = 0
         for i, c in enumerate(cnts):
             (x, y, w, h) = cv2.boundingRect(c)
             ((cX, cY), radius) = cv2.minEnclosingCircle(c)
             
+            #draw outlines of ROIs
             for i, j in enumerate(self.ROIs):
                 cv2.rectangle(image, (j[0],j[1]), (j[2], j[3]), (255,0,0), 2)
-            
             #if within specified radius, might be wise to renumber the bounding boxes.
             if radius < r_high and radius > r_low:
                 if overlay and y > y_thresh:
-#                     tempROI.append(self.calculate_ROI_corners(x, y, w, h))
                     cv2.circle(image, (int(cX), int(cY)), int(radius), (0,0,255), 3)
-                    print("circle no. {}".format(j+1), "radius:", radius, "center:", cX, ",", cY)
-                    cv2.putText(image, "hole # {}".format(j+1), (x,y -15), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0,0,255), 2)
+#                     print("circle no. {}".format(k+1), "radius:", radius, "center:", cX, ",", cY)
+#                     print(self.ROIs[k])
+                    cv2.putText(image, "mold # {}".format(k+1), (x,y -15), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0,0,255), 2)
                     cv2.rectangle(image, (int(x), int(y)), (int(x+w), int(y+h)), (255,0,0), 2)
                     self.update_status(cX, cY)
-                    j+=1
+                    k+=1
             
                 if cX > (cam_width/2):
                     coordX = (cX - (cam_width/2))/d
@@ -443,14 +458,14 @@ class App():
             
                 coordY = ((cam_height-20) - cY)/d
                 [coordX, coordY] = [round(coordX, 2), round(coordY, 2)]
+                
                 #converting h,w to real sizes from pixel size. 
-                #rounding to accommodate int values only for pixels
                 [h,w] = [round(h/d, 2), round(w/d, 2)]
                 area = round(h*w, 2)
                 #check for overlay
                 if overlay:
-                    cv2.putText(image, "coords: ({},{})".format(coordX, coordY), (int(cX - radius),int(cY +radius) + 20), cv2.FONT_HERSHEY_COMPLEX_SMALL, 0.5, (0,0,255), thickness = 1)
-                    cv2.putText(image, "height and width: ({},{})".format(h, w), (int(cX - radius),int(cY +radius) + 30), cv2.FONT_HERSHEY_COMPLEX_SMALL, 0.5, (0,0,255), thickness = 1)
+                    cv2.putText(image, "centers: ({},{})".format(coordX, coordY), (int(cX - radius),int(cY +radius) + 20), cv2.FONT_HERSHEY_COMPLEX_SMALL, 0.5, (0,0,255), thickness = 1)
+                    cv2.putText(image, "h,w: ({},{})".format(h, w), (int(cX - radius),int(cY +radius) + 30), cv2.FONT_HERSHEY_COMPLEX_SMALL, 0.5, (0,0,255), thickness = 1)
                     cv2.putText(image, "area: ({})".format(area), (int(cX - radius),int(cY +radius) + 40), cv2.FONT_HERSHEY_COMPLEX_SMALL, 0.5, (0,0,255), thickness = 1)
                     #principle axes, with working center
                     cv2.line(image, (0, int(cam_height-20)), (cam_width, int(cam_height-20)), color = 255)
@@ -463,8 +478,7 @@ class App():
                     cv2.line(image, (int(cam_width/2), 0), (int(cam_width/2), cam_height), color = 255)
                     cv2.circle(image, (int(cam_width/2), int(cam_height-20)), 5, (255, 0, 0), 1)
                     self.feed = image
-    
-#         self.ROIs = tempROI
+
         return self.feed
 
 
