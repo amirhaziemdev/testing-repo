@@ -48,10 +48,15 @@ Still needs work: timing for update of molds, can it be something like 1.25 - 1.
 To temporarily debug this, the text boxes store the '1' value indefinitely if something is detected within the boxes
 Changed the default ROI center tolerance to 0.5 (50%). This needs to be adjusted
 
+Version 16/1/2019
+Added timing function for send_command function. This should delay updates by 1.5 seconds (adjustable) as required by PLC
+
 Note to self:
 Add options to adjust camera specs. Resolutions, distances, angle, field of view, etc.
 For manual adjustments. Fix alignments for buttons and spinboxes. Please also add text/label beside
 (or inside) every spinbox/options/buttons (29/12/18)
+Maybe consider a delayed update function for the status/ID textboxes? Needs a different update mechanism including careful 
+placement of function calls. 
 
 
 '''
@@ -59,8 +64,6 @@ import numpy as np
 from imutils import contours
 from skimage import measure 
 import imutils
-import datetime
-import time
 import tkinter
 import cv2
 import PIL.Image, PIL.ImageTk
@@ -78,8 +81,9 @@ f = 0.375 #factor by which the distance is multiplied
 #constants
 cam_width = 640
 cam_height = 480
-center_tolerance = 0.75 #in percentage of the height and width of the OOI/mold
+center_tolerance = 0.5 #in percentage of the height and width of the OOI/mold
 y_thresh = 0 #only focus on the lower y_thresh pixels
+v_thresh = 200
 
 #GUI constant
 #label frame paddings
@@ -94,10 +98,10 @@ format is: [[x,y,w,h]
 where (x,y) is the upper left hand corner of the rectangle
 w is the width of the rectangle,
 and h is its height.
-This has been hard-coded in (duh!), please make it smarter 
+This has been hard-coded in (duh!), please make it smarter -_- 
 '''
 tempH = 150
-tempY = 230
+tempY = 120
 tempROI = []
 tempROI = [[0, tempY, 100, tempH],
            [80, tempY, 80, tempH],
@@ -128,7 +132,7 @@ class App():
         self.btn_snapshot.pack(anchor=tkinter.CENTER, expand = True)
         
         #init empty regions of interest (ROI) list
-        #if any centers of rectangles fall within any of the ROIs, they automatically become OOIs. (i.e. status set to '1')
+        #if any centers of rectangles fall within any of the ROIs, they automatically become detected OOIs. (i.e. status set to '1')
         self.ROIs = []
         self.set_ROIs()
         
@@ -199,10 +203,12 @@ class App():
 #         self.btn_snapshot = tkinter.Button(window, text = "Snapshot", width = 50, command = self.snapshot)
 #         self.btn_snapshot.pack(anchor=tkinter.CENTER, expand = True)
 
-        
+        self.temp = 0
         #after it is called once, the update will be automatically called after every delay ms
         self.delay = 15
         self.update()
+        self.senddelay = 1500 #sends commands every 1.5 seconds
+        self.send_command()
         
         self.window.mainloop()
     
@@ -253,10 +259,15 @@ class App():
         missing implementation for sending over serial cable.
         please include (14/1/2019)
         '''
-        print('String sent! string is: ', self.convert_to_string())
+        
+        print('String sent! string is: ', self.convert_to_string(), '\nTime surpassed:', (time.time() - self.temp))
+        
         for i,j in enumerate(self.statlist):
             self.statlist[i].set('0')
-    
+        
+        self.temp = time.time()
+        #refreshes every 1.5 seconds, overriding the button function call
+        self.window.after(self.senddelay, self.send_command)
     #can reuse this function (renamed update status or something)
     def dummy_button_press(self, ID=3):
         if self.statlist[ID].get() == '0':
@@ -324,12 +335,10 @@ class App():
     
     #function call for snapshot button
     def snapshot(self):
-        #get a frame from video source
-        ret, frame = self.vid.get_frame()
-        if ret:
-            cv2.imwrite("conveyor-" + time.strftime("%d-%m-%Y-%H-%M-%S") + ".jpg", cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
-            print("Snapshot taken! Directory:")
-            print("conveyor-" + time.strftime("%d-%m-%Y-%H-%M-%S") + ".jpg")
+        frame = self.feed
+        cv2.imwrite("conveyor-" + time.strftime("%d-%m-%Y-%H-%M-%S") + ".jpg", cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
+        print("Snapshot taken! Directory:")
+        print("conveyor-" + time.strftime("%d-%m-%Y-%H-%M-%S") + ".jpg")
     
     def update(self):
         #get a frame from video source
@@ -372,9 +381,9 @@ class App():
         #this is for deciding if the background is dark or light
         #darkbg == True means there is a dark background behind OOI, false means light background
         if darkbg:
-            thresh = cv2.threshold(gray, 100, 255, cv2.THRESH_BINARY)[1]
+            thresh = cv2.threshold(gray, v_thresh, 255, cv2.THRESH_BINARY)[1]
         else:
-            thresh = cv2.threshold(gray, 100, 255, cv2.THRESH_BINARY_INV)[1]
+            thresh = cv2.threshold(gray, v_thresh, 255, cv2.THRESH_BINARY_INV)[1]
         
         labels = measure.label(thresh, neighbors=8, background=0)
         
@@ -443,7 +452,7 @@ class App():
             #if within specified radius, might be wise to renumber the bounding boxes.
             if radius < r_high and radius > r_low:
                 if overlay and y > y_thresh:
-                    cv2.circle(image, (int(cX), int(cY)), int(radius), (0,0,255), 3)
+#                     cv2.circle(image, (int(cX), int(cY)), int(radius), (0,0,255), 3)
 #                     print("circle no. {}".format(k+1), "radius:", radius, "center:", cX, ",", cY)
 #                     print(self.ROIs[k])
                     cv2.putText(image, "mold # {}".format(k+1), (x,y -15), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0,0,255), 2)
