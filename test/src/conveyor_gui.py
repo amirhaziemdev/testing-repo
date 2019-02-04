@@ -51,6 +51,24 @@ Changed the default ROI center tolerance to 0.5 (50%). This needs to be adjusted
 Version 16/1/2019
 Added timing function for send_command function. This should delay updates by 1.5 seconds (adjustable) as required by PLC
 
+Version 17/1/2019
+Removed keystop in self.update() function, it's been causing bugs. Normal stop (X button on GUI) should suffice for this application
+
+
+missing implementation for sending over serial cable.
+please include (14/1/2019)
+        
+(24/1/2019): Adding ser.write() mechanism in App.send_command, watch out for bugs
+
+important point: please update the status at ID in the Tkinter window with respect to its ID here.
+Definition of region of interest will be crucial to this application.
+Also please create text box to update the status at ROI (done 11/1/2019) - Amir
+
+Version 4/2/2019
+Removed a chunk of code and various implementations are either added or removed, I lost track of everything.
+But this version should be the final webcam version before implementing IP camera in the actual conveyor.
+Implemented dictionary for easy import of constants from text file. Current text file is configs.txt
+
 Note to self:
 Add options to adjust camera specs. Resolutions, distances, angle, field of view, etc.
 For manual adjustments. Fix alignments for buttons and spinboxes. Please also add text/label beside
@@ -68,27 +86,77 @@ import tkinter
 import cv2
 import PIL.Image, PIL.ImageTk
 import time
+import random as rd
+import serial_rx_tx
+import serial
 from tkinter import *
+from tkinter.scrolledtext import ScrolledText
+from pymodbus.client.sync import ModbusSerialClient
 
 #default values, can be included in GUI
 #these settings should be in an .init file or something
 #should be a text file with editable constants along with the executable
-cam = 0
-d = 15 #cm
-de = 40 #cm
-f = 0.375 #factor by which the distance is multiplied
+directory = 'configs.txt'
+my_constants = {
+    "cam":'0',
+    "comport":'0',
+    "baud":'0',
+    "send_interval":'0',
+    "slave_ID":'0',
+    "start_address":'0',
+    "d":'0',
+    "de":'0',
+    "f":'0',
+    "cam_width":'0',
+    "cam_height":'0',
+    "center_tolerance":'0',
+    "y_thresh":'0',
+    "v_thresh":'0',
+    "paddingx":'0',
+    "paddingy":'0'
+    }
+'''
+outsourcing constant values
+'''
+f = open(directory,mode='r')
+my_lines = f.read()
+temp = my_lines.split()
+for i,j in enumerate(temp):
+    if temp[i]=='=':
+        del(temp[i])
+
+for x,y in my_constants.items():
+    for i,j in enumerate(temp):
+        if x==temp[i]:
+            try:
+                my_constants[temp[i]] = int(temp[i+1])
+            except:
+                my_constants[temp[i]] = float(temp[i+1])
+    
+f.close()
+
+#configurations
+cam = my_constants['cam']
+comport = my_constants['comport']
+baud = my_constants['baud']
+send_interval = my_constants['send_interval'] #ms
+slave_ID = my_constants['slave_ID']
+start_address = my_constants['cam'] #address to which the program will write
+d = my_constants['d'] #cm
+de = my_constants['de'] #cm
+f = my_constants['f'] #factor by which the distance is multiplied
 
 #constants
-cam_width = 640
-cam_height = 480
-center_tolerance = 0.5 #in percentage of the height and width of the OOI/mold
-y_thresh = 0 #only focus on the lower y_thresh pixels
-v_thresh = 200
+cam_width = my_constants['cam_width']
+cam_height = my_constants['cam_height']
+center_tolerance = my_constants['center_tolerance'] #in percentage of the height and width of the OOI/mold
+y_thresh = my_constants['y_thresh'] #only focus on the lower y_thresh pixels
+v_thresh = my_constants['v_thresh']
 
 #GUI constant
 #label frame paddings
-paddingx = 35
-paddingy = 10
+paddingx = my_constants['paddingx']
+paddingy = my_constants['paddingy']
 
 #defining outer boundaries of ROI, in pixels
 '''
@@ -101,7 +169,7 @@ and h is its height.
 This has been hard-coded in (duh!), please make it smarter -_- 
 '''
 tempH = 150
-tempY = 120
+tempY = 150
 tempROI = []
 tempROI = [[0, tempY, 100, tempH],
            [80, tempY, 80, tempH],
@@ -114,22 +182,30 @@ tempROI = [[0, tempY, 100, tempH],
 
 
 class App():
-    def __init__(self, window, window_title, video_source=cam):
+    def __init__(self, window, window_title, camera, portNum, baudrate):
         #init everything
         self.window = window
         self.window.title(window_title)
-        self.video_source = video_source
+        self.video_source = camera
+        self.portNum = 'COM'+str(portNum)
+        self.baudrate = baudrate
+        
+        
+        #Copy object serialPort
+#         self.serialPort = serialPort
+        self.client = ModbusSerialClient(method='rtu', port=self.portNum, baudrate=self.baudrate, parity = 'O')
+#         self.serialPort.RegisterReceiveCallback(self.onReceiveSerialData)
         
         #open video source
         self.vid = MyVideoCapture(self.video_source)
         
         #create a canvas with given dimensions
-        self.canvas = tkinter.Canvas(window, width = self.vid.width, height = self.vid.height)
-        self.canvas.pack()
+        self.canvas = tkinter.Canvas(self.window, width = self.vid.width, height = self.vid.height)
+        self.canvas.grid(row=0, column=0, columnspan=20)
         
         #button for taking screenshots
-        self.btn_snapshot = tkinter.Button(window, text = "Snapshot", width = 50, command = self.snapshot)
-        self.btn_snapshot.pack(anchor=tkinter.CENTER, expand = True)
+        self.btn_snapshot = tkinter.Button(self.window, text = "Snapshot", width = 20, command = self.snapshot)
+        self.btn_snapshot.grid(row=1, column=3)
         
         #init empty regions of interest (ROI) list
         #if any centers of rectangles fall within any of the ROIs, they automatically become detected OOIs. (i.e. status set to '1')
@@ -138,10 +214,10 @@ class App():
         
         #initialise values, at these values all molds can currently be seen
         [self.thresh_px_lo, self.thresh_px_hi, self.thresh_rd_lo, self.thresh_rd_hi] = [1, 20000, 22, 1000]
-        var1 = StringVar(window)
-        var2 = StringVar(window)
-        var3 = StringVar(window)
-        var4 = StringVar(window)
+        var1 = StringVar(self.window)
+        var2 = StringVar(self.window)
+        var3 = StringVar(self.window)
+        var4 = StringVar(self.window)
         
         #init with default values
         var1.set(self.thresh_px_hi)
@@ -152,8 +228,8 @@ class App():
         self.overlay = True
         
         #init labelframe for status/ID organiser
-        labelframe = LabelFrame(window, text="ID/Status")
-        labelframe.pack(fill="both", expand="yes")
+        labelframe = LabelFrame(self.window, text="ID/Status", width = 120)
+        labelframe.grid(row=2,column=0, columnspan=20)
 
         #init statlist
         self.statlist = []
@@ -162,68 +238,106 @@ class App():
         #init 8 StringVar variables
         for i in range(8):
             self.statlist.append(StringVar(value = '0'))
-
-        '''
-        use this code (self.st0.set('blah')) for updating ID and status of mold. let them be in functions
-        '''
         
-        self.stat0 = Label(labelframe, textvariable=self.statlist[0], bg = 'white').pack(padx=paddingx, pady=paddingy, side=LEFT, expand = "yes")
-        self.stat1 = Label(labelframe, textvariable=self.statlist[1], bg = 'white').pack(padx=paddingx, pady=paddingy, side=LEFT, expand = "yes")
-        self.stat2 = Label(labelframe, textvariable=self.statlist[2], bg = 'white').pack(padx=paddingx, pady=paddingy, side=LEFT, expand = "yes")
-        self.stat3 = Label(labelframe, textvariable=self.statlist[3], bg = 'white').pack(padx=paddingx, pady=paddingy, side=LEFT, expand = "yes")
-        self.stat4 = Label(labelframe, textvariable=self.statlist[4], bg = 'white').pack(padx=paddingx, pady=paddingy, side=LEFT, expand = "yes")
-        self.stat5 = Label(labelframe, textvariable=self.statlist[5], bg = 'white').pack(padx=paddingx, pady=paddingy, side=LEFT, expand = "yes")
-        self.stat6 = Label(labelframe, textvariable=self.statlist[6], bg = 'white').pack(padx=paddingx, pady=paddingy, side=LEFT, expand = "yes")
-        self.stat7 = Label(labelframe, textvariable=self.statlist[7], bg = 'white').pack(padx=paddingx, pady=paddingy, side=LEFT, expand = "yes")
-        
+        self.stat0 = Label(labelframe, textvariable=self.statlist[0], bg = 'white').grid(row = 3,column = 2, padx=paddingx, pady = paddingy)
+        self.stat1 = Label(labelframe, textvariable=self.statlist[1], bg = 'white').grid(row = 3,column = 4, padx=paddingx, pady = paddingy)
+        self.stat2 = Label(labelframe, textvariable=self.statlist[2], bg = 'white').grid(row = 3,column = 6, padx=paddingx, pady = paddingy)
+        self.stat3 = Label(labelframe, textvariable=self.statlist[3], bg = 'white').grid(row = 3,column = 8, padx=paddingx, pady = paddingy)
+        self.stat4 = Label(labelframe, textvariable=self.statlist[4], bg = 'white').grid(row = 3,column = 10, padx=paddingx, pady = paddingy)
+        self.stat5 = Label(labelframe, textvariable=self.statlist[5], bg = 'white').grid(row = 3,column = 12, padx=paddingx, pady = paddingy)
+        self.stat6 = Label(labelframe, textvariable=self.statlist[6], bg = 'white').grid(row = 3,column = 14, padx=paddingx, pady = paddingy)
+        self.stat7 = Label(labelframe, textvariable=self.statlist[7], bg = 'white').grid(row = 3,column = 16, padx=paddingx, pady = paddingy)
+#         
+#         for i in range(8):
+#             Label(labelframe, textvariable = self.statlist[i], bg = 'white').grid(row = 3, column = (i*2)+2, padx = paddingx, pady = paddingy)
+#         
         #init Entry boxes here for focal point and distance of installment
         #this can maybe be compacted into a .txt file or something. too many options in GUI is NOT GOOD and NOT INTUITIVE
-        varfocalpoint = StringVar(window)
+        varfocalpoint = StringVar(self.window)
         varfocalpoint.set('100')
-        vardistance = StringVar(window)
+        vardistance = StringVar(self.window)
         vardistance.set('100')
 #         self.entry_focal_point = Entry(window, textvariable = varfocalpoint).pack(side=LEFT)
 #         self.entry_vardistance = Entry(window, textvariable = vardistance).pack(side=LEFT)
+
+        self.textframe = tkinter.Frame(self.window, bg='white').grid(row=5,column=1,rowspan=8,columnspan=6)
+        self.textbox = ScrolledText(self.textframe, wrap='word',height=3, width=70)
+        self.textbox.grid(row=5,column=1,rowspan=8,columnspan=6, pady=paddingy)
         
         #sliders/spinboxes for controlling threshold
-        self.sliders_px_hi = tkinter.Spinbox(window, from_=0, to=20000, command = self.set_thresh, increment = 100.0, textvariable = var1)
-        self.sliders_px_hi.pack(anchor = tkinter.E)
-        self.sliders_px_lo = tkinter.Spinbox(window, from_=0, to=100, command = self.set_thresh, textvariable = var2)
-        self.sliders_px_lo.pack(anchor = tkinter.E)
-        self.sliders_rd_hi = tkinter.Spinbox(window, from_=0, to=10000, command = self.set_thresh, increment = 100.0, textvariable = var3)
-        self.sliders_rd_hi.pack(anchor = tkinter.E)
-        self.sliders_rd_lo = tkinter.Spinbox(window, from_=0, to=100, command = self.set_thresh, textvariable = var4)
-        self.sliders_rd_lo.pack(anchor = tkinter.E)
+        self.sliders_px_hi = tkinter.Spinbox(self.window, from_=0, to=20000, command = self.set_thresh, increment = 100.0, textvariable = var1)
+        self.sliders_px_hi.grid(row = 7, column = 8)
+        self.sliders_px_lo = tkinter.Spinbox(self.window, from_=0, to=100, command = self.set_thresh, textvariable = var2)
+        self.sliders_px_lo.grid(row = 8, column = 8)
+        self.sliders_rd_hi = tkinter.Spinbox(self.window, from_=0, to=10000, command = self.set_thresh, increment = 100.0, textvariable = var3)
+        self.sliders_rd_hi.grid(row = 9, column = 8)
+        self.sliders_rd_lo = tkinter.Spinbox(self.window, from_=0, to=100, command = self.set_thresh, textvariable = var4)
+        self.sliders_rd_lo.grid(row = 10, column = 8)
         
+        self.COMPortButton = StringVar(value='Open Port')
         #buttons for controlling overlay, darkbg
-        self.btn_darkbg = Button(window, text = "Dark Background", width = 20, command = self.set_darkbg).pack(side = LEFT)
-        self.btn_overlay = Button(window, text = "Overlay", width = 20, command = self.set_overlay).pack(side = LEFT)
-        self.dummy = Button(window, text = 'Dummy Press', width = 20, command = self.dummy_button_press).pack(side=LEFT)
-        self.btn_sendcmd = Button(window, text = "Send", width = 20, command = self.send_command).pack(side=LEFT)
-#         self.btn_snapshot = tkinter.Button(window, text = "Snapshot", width = 50, command = self.snapshot)
-#         self.btn_snapshot.pack(anchor=tkinter.CENTER, expand = True)
+        self.btn_darkbg = Button(self.window, text = "Dark Background", width = 20, command = self.set_darkbg).grid(row = 12, column = 1)
+        self.btn_overlay = Button(self.window, text = "Overlay", width = 20, command = self.set_overlay).grid(row = 12, column = 2)
+        self.dummy = Button(self.window, text = 'Dummy Press', width = 20, command = self.dummy_button_press).grid(row = 12, column = 3)
+#         self.btn_porttoggle = Button(self.window, textvariable = self.COMPortButton, width = 20, command = self.portToggle).grid(row = 12, column = 4)
 
         self.temp = 0
         #after it is called once, the update will be automatically called after every delay ms
         self.delay = 15
+        self.senddelay = send_interval
+        self.send_IO()
         self.update()
-        self.senddelay = 1500 #sends commands every 1.5 seconds
-        self.send_command()
         
         self.window.mainloop()
+        
+    def send_IO(self):
+        for i,j in enumerate(self.statlist):
+            if self.statlist[i].get() == '1':
+                self.client.write_coil(start_address+i, value=1, unit=slave_ID)
+                print('Writing 1 to address:', start_address+i)
+            elif self.statlist[i].get() == '0':
+                self.client.write_coil(start_address+i, value=0, unit=slave_ID)
+                print('Writing 0 to address:', start_address+i)
+            self.statlist[i].set('0')
+        self.window.after(self.senddelay, self.send_IO)
+        
+    def portToggle(self):
+        if self.serialPort.IsOpen():
+            self.closePort()
+        else:
+            self.openPort()
+    
+    def openPort(self):
+        try:
+            self.serialPort.Open(self.portNum,self.baudrate)
+            self.textbox.insert('1.0','COM Port {} opened!\n'.format(self.portNum))
+            self.COMPortButton.set('Close Port')
+            self.send_command() #start sending commands
+        except:
+#             self.textbox.insert('1.0','COM Port {} open failed.\n'.format(self.portNum))
+            print('COM Port {} open unsuccessful'.format(self.portNum))
+        print('COM Port {} opened!'.format(self.portNum))
+    
+    def closePort(self):
+        if self.serialPort.IsOpen():
+            self.serialPort.Close()
+            self.textbox.insert('1.0', 'COM Port {} closed successfully!\n'.format(self.portNum))
+            self.COMPortButton.set('Open Port')
+        else:
+            self.textbox.insert('1.0', 'COM Port already closed!\n')
     
     #will only be called once, ROIs are RIGID
     def set_ROIs(self):
         for i, j in enumerate(tempROI):
             self.ROIs.append(self.calculate_ROI_corners(j[0],j[1],j[2],j[3]))
-        
         print(self.ROIs)
         
     #to be sent to filling PLC
     def convert_to_string(self):
         value = self.statlist[0].get() + self.statlist[1].get()+ self.statlist[2].get()+ self.statlist[3].get()+ self.statlist[4].get()+ self.statlist[5].get()+ self.statlist[6].get()+ self.statlist[7].get()
-        print(value)
-        return value
+        value_str = value
+        value = hex((int(value, base=2)))
+        return value, value_str
     #detects if centers fall within the ROI and updates the current status
     def update_status(self, cX, cY):
         for i, j in enumerate(self.ROIs):
@@ -255,51 +369,31 @@ class App():
         
     def send_command(self):
         print('Command sent! Clearing all status...')
-        '''
-        missing implementation for sending over serial cable.
-        please include (14/1/2019)
-        '''
         
-        print('String sent! string is: ', self.convert_to_string(), '\nTime surpassed:', (time.time() - self.temp))
+        [value_hex, value_bin] = self.convert_to_string()
+        self.serialPort.Send(value_hex)
         
-        for i,j in enumerate(self.statlist):
-            self.statlist[i].set('0')
+        print('String sent! string is: ', value_hex, value_bin, '\nTime surpassed:', (time.time() - self.temp))
         
         self.temp = time.time()
         #refreshes every 1.5 seconds, overriding the button function call
         self.window.after(self.senddelay, self.send_command)
+        
     #can reuse this function (renamed update status or something)
-    def dummy_button_press(self, ID=3):
+    def dummy_button_press(self):
+        ID=rd.randint(0,7)
         if self.statlist[ID].get() == '0':
             self.statlist[ID].set('1')
         else:
             self.statlist[ID].set('0')
     
-    #unused
-    def create_new_ROI(self):
-        temp = cv2.selectROI()
-        self.ROIs.append(temp)
-        print('Appended ', temp)
-        return self.ROIs
-    
-    #unused
-    def create_new_mold(self, ID, status):
-        #instantiate a new mold
-        self.mold = Mold(ID, status)
-        print("Mold created! ID: {}, status: {}".format(ID, status))
-        return self.mold
-    
-    def destroy_mold(self):
-        self.mold.destroy()
-        
-    #boolean, will return true or false
-    #function call for setting overlay true/false from overlay button. called at __init__
     def set_darkbg(self):
         if self.darkbg == True:
             self.darkbg = False
         elif self.darkbg == False:
             self.darkbg = True
         print('Dark Background: ', self.darkbg)
+        self.textbox.insert('1.0','Dark Background: {}\n'.format(self.darkbg))
     
     #function call for returning darkbg True/false. called at overlay option in mould_detection
     def get_darkbg(self):
@@ -312,6 +406,7 @@ class App():
         elif self.overlay == False:
             self.overlay = True
         print('Overlay: ', self.overlay)
+        self.textbox.insert('1.0','Overlay: {}\n'.format(self.overlay))
     
     #function call for returning overlay True/false. called at overlay option in mould_detection
     def get_overlay(self):
@@ -343,22 +438,11 @@ class App():
     def update(self):
         #get a frame from video source
         ret,frame = self.vid.get_frame()
-        '''
-        important point: please update the status at ID in the Tkinter window with respect to its ID here.
-        Definition of region of interest will be crucial to this application.
-        Also please create text box to update the status at ROI (done 11/1/2019) - Amir
-        '''
+        
         if ret:
             frame = self.mould_detection(frame)
             self.photo = PIL.ImageTk.PhotoImage(image = PIL.Image.fromarray(frame))
             self.canvas.create_image(0,0, image = self.photo, anchor = tkinter.NW)
-        
-        #key stop does not work!!! might have to find another place to put this
-        #or specify another method::: google bind in class or some shit
-        if cv2.waitKey(0) & 0xFF == ord('q'):
-            self.quit
-            self.vid.release()
-            cv2.destroyAllWindows()
             
         self.window.after(self.delay, self.update)
     
@@ -453,8 +537,6 @@ class App():
             if radius < r_high and radius > r_low:
                 if overlay and y > y_thresh:
 #                     cv2.circle(image, (int(cX), int(cY)), int(radius), (0,0,255), 3)
-#                     print("circle no. {}".format(k+1), "radius:", radius, "center:", cX, ",", cY)
-#                     print(self.ROIs[k])
                     cv2.putText(image, "mold # {}".format(k+1), (x,y -15), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0,0,255), 2)
                     cv2.rectangle(image, (int(x), int(y)), (int(x+w), int(y+h)), (255,0,0), 2)
                     self.update_status(cX, cY)
@@ -476,20 +558,14 @@ class App():
                     cv2.putText(image, "centers: ({},{})".format(coordX, coordY), (int(cX - radius),int(cY +radius) + 20), cv2.FONT_HERSHEY_COMPLEX_SMALL, 0.5, (0,0,255), thickness = 1)
                     cv2.putText(image, "h,w: ({},{})".format(h, w), (int(cX - radius),int(cY +radius) + 30), cv2.FONT_HERSHEY_COMPLEX_SMALL, 0.5, (0,0,255), thickness = 1)
                     cv2.putText(image, "area: ({})".format(area), (int(cX - radius),int(cY +radius) + 40), cv2.FONT_HERSHEY_COMPLEX_SMALL, 0.5, (0,0,255), thickness = 1)
-                    #principle axes, with working center
-                    cv2.line(image, (0, int(cam_height-20)), (cam_width, int(cam_height-20)), color = 255)
-                    cv2.line(image, (int(cam_width/2), 0), (int(cam_width/2), cam_height), color = 255)
-                    cv2.circle(image, (int(cam_width/2), int(cam_height-20)), 5, (255, 0, 0), 1)
-                    self.feed = image
-                else:
-#                     cv2.putText(thresh, "coords: ({},{})".format(coordX, coordY), (int(cX - radius),int(cY +radius) + 20), cv2.FONT_HERSHEY_COMPLEX_SMALL, 0.5, (0,0,255), thickness = 1)
-                    cv2.line(image, (0, int(cam_height-20)), (cam_width, int(cam_height-20)), color = 255)
-                    cv2.line(image, (int(cam_width/2), 0), (int(cam_width/2), cam_height), color = 255)
-                    cv2.circle(image, (int(cam_width/2), int(cam_height-20)), 5, (255, 0, 0), 1)
-                    self.feed = image
+                    
+                #principle axes, with working center
+                cv2.line(image, (0, int(cam_height-20)), (cam_width, int(cam_height-20)), color = 255)
+                cv2.line(image, (int(cam_width/2), 0), (int(cam_width/2), cam_height), color = 255)
+                cv2.circle(image, (int(cam_width/2), int(cam_height-20)), 5, (255, 0, 0), 1)
+                self.feed = image
 
         return self.feed
-
 
 class MyVideoCapture():
     def __init__(self, video_source = cam):
@@ -520,31 +596,8 @@ class MyVideoCapture():
         if self.vid.isOpened():
             self.vid.release()
 
-'''
-do we know what we need for Mold class yet?
-We do know that we need ID (0-7) and status (Boolean e.g. True or False)
-Do we need centres? This might overcomplicate things
-'''
-class Mold():
-    def __init__(self, ID, status, centreX, centreY):
-        self.ID = ID
-        self.status = status
-        self.centreX = centreX
-        self.centreY = centreY
-    
-    def get_ID(self):
-        return self.ID
-    
-    def get_status(self):
-        return self.status
-    
-    #call for destroy
-    def destroy(self):
-        self.ID.delete()
-        self.status.delete()
-
 def main():
-    App(tkinter.Tk(), "Tkinter and OpenCV")
+    App(tkinter.Tk(), "Conveyor GUI",cam, comport, baud) #omitted serial_rx_tx.SerialPort() from argument 3 after cam
     
 if __name__ == "__main__":
     main()
