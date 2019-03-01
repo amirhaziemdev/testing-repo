@@ -1,0 +1,110 @@
+<SM>:
+	MainPage:
+		id: main_page
+		name: "main_page"
+	SettingsPage:
+		id: settings_page
+		name: "settings_page"
+
+<MainPage>:
+	BoxLayout:
+		orientation: "horizontal"
+		
+		BoxLayout:
+			orientation: "vertical"
+			size_hint: 640, 1
+			
+			KivyCamera:
+				id: kivy_camera
+				size_hint: 1, 480
+				canvas:
+					Rectangle:
+						texture: self.texture
+						size: self.width, self.height
+						pos: self.x, self.y
+			
+			ScrollView:
+				id: scroller
+				size_hint: 1, 100
+				bar_width:10
+				bar_color: (1, 0, 0, 1)
+				TextInput:
+					id: console
+					size_hint: None, None
+					width: scroller.width
+					height: max(self.minimum_height, scroller.height)
+					multiline: True
+					readonly: True
+					foreground_color: (1, 0, 0, 1)
+					background_color: (0, 0, 0, 1)
+		Sidebar:
+			id: sidebar
+			size_hint: 160,1
+			
+<SettingsPage>:
+	BoxLayout:
+		orientation: "horizontal"
+		
+		BoxLayout:
+			orientation: "vertical"
+			size_hint: 640, 1
+			
+		Sidebar:
+			id: sidebar
+			size_hint: 200, 1
+        	
+<Sidebar>:
+    orientation: "vertical"
+    size_hint: 200, 1
+    
+    GenericButton:
+    	id: start_button
+    	text: "START"
+    	size_hint: 1, 0.2
+    	on_press: app.root.ids.main_page.console_write("START Button Pressed")
+    	
+    BoxLayout:
+    	orientation: "horizontal"
+    	size_hint: 1, 0.2
+        GoButton:
+        	id: go_button
+        	name: "nogo"
+        	text: "GO"
+        	background_color: (0.3, 1.0, 0.3, 1.0)
+        	on_press: app.root.ids.main_page.console_write("GO Button Pressed")
+        NGButton:
+        	id: ng_button
+        	text: "NG"
+        	background_color: (1.0, 0.3, 0.3, 1.0)
+        	on_press: app.root.ids.main_page.console_write("NG Button Pressed")
+    
+    GenericButton:
+    	id: capture_button
+    	text: "CAPTURE"
+    	size_hint: 1, 0.2
+    	on_press: app.root.ids.main_page.ids.kivy_camera.cv2_select_roi()
+    	on_press: app.root.ids.main_page.console_write("CAPTURE Button Pressed")
+        	
+    GenericButton:
+    	id: learn_button
+    	text: "LEARN"
+    	size_hint: 1, 0.2
+    	on_press: app.root.ids.main_page.console_write("LEARN Button Pressed")
+    	
+    GenericButton:
+    	id: reset_button
+    	text: "RESET"
+    	size_hint: 1, 0.2
+    	on_press: app.root.ids.main_page.console_write("RESET Button Pressed")
+    	
+    GenericButton:
+    	id: settings_button
+    	text: "SETTINGS"
+    	size_hint: 1, 0.2
+    	on_press: root.change_page()
+    	on_press: app.root.ids.main_page.console_write("SETTINGS Button Pressed")
+        	
+<Button>:
+	font_size: 20
+	bold: True
+	background_color: (0.3, 0.3, 0.3, 1)
