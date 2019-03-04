@@ -1,5 +1,5 @@
 """
-version 0.0.1.04032019
+version 0.0.1.04032019 by Ammar
 """
 from kivy.config import Config
 # Config.set('graphics', 'resizable', '0') # 0 being off 1 being on as in true/false
@@ -74,8 +74,12 @@ class KivyCamera(Image):
         template = cv2.cvtColor(temp, cv2.COLOR_BGR2GRAY)
         w,h = template.shape[::-1]
         
+        d2 = cv2.matchShapes(img_gray,template,cv2.CONTOURS_MATCH_I2,0)
+        print(d2)
+        
         res = cv2.matchTemplate(img_gray, template, cv2.TM_CCOEFF_NORMED)
-        threshold = 0.7
+        # Starting threshold value can be changes in kv file under Slider
+        threshold = self.app.root.ids.settings_page.ids.threshold.value
         loc = np.where(res>=threshold)
         
         if loc[0].any():

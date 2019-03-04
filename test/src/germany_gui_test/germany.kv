@@ -39,9 +39,24 @@
 			orientation: "vertical"
 			size_hint: 640, 1
 			
-			Label:
-				id: label
+			BoxLayout:
+				orientation: "vertical"
+				id: settings
 				size_hint: 1, 480
+				
+				Label:
+					id: threshold_value
+					text: "Threshold: " + str(round(threshold.value, 2))
+				
+				Slider:
+					id: threshold
+					orientation: "horizontal"
+					min: 0
+					max: 1
+					value: 0.8
+					step:0.01
+					on_touch_up: app.root.ids.main_page.ids.console.console_write(f"Changed feature threshold value to {self.value}!")
+					on_touch_up: app.root.ids.settings_page.ids.console.console_write(f"Changed feature threshold value to {self.value}!")
 			
 			Console:
 				id: console
