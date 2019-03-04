@@ -15,6 +15,9 @@ from kivy.factory import Factory
 from kivy.uix.screenmanager import Screen, ScreenManager
 from kivy.uix.button import Button
 
+import cv2
+import numpy as np
+
 isRecording = True
 
 class KivyCamera(Image):
@@ -31,9 +34,10 @@ class KivyCamera(Image):
         if isRecording == True:
             ret, frame = self.capture.read()
             if ret:
+                frame = self.feature_matching(frame)
                 # convert it to texture
                 frame = cv2.flip(frame, 0)
-                frame = cv2.flip(frame, 1)
+#                 frame = cv2.flip(frame, 1)
                 w, h = int(self.width), int(self.height)
                 buf = cv2.resize(frame, (w,h))
                 self.temp = buf
@@ -50,7 +54,25 @@ class KivyCamera(Image):
                 self.y1 = self.y + h
         else:
             pass
-            
+    
+    def feature_matching(self, frame):
+        img_bgr = frame
+        img_gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
+        
+        template = cv2.imread('1.jpg',0)
+        w,h = template.shape[::-1]
+        
+        res = cv2.matchTemplate(img_gray, template, cv2.TM_CCOEFF_NORMED)
+        threshold = 0.8
+        loc = np.where(res>=threshold)
+        
+        for pt in zip(*loc[::-1]):
+            cv2.rectangle(img_bgr, pt, (pt[0]+w, pt[1]+h), (0,255,255), 1)
+        
+        
+        cv2.imshow('Template', template)
+        return img_bgr
+    
     def on_touch_down(self, touch):
         self.first_pos = touch.pos
         self.app.root.ids.main_page.console_write(f"First position: x: {self.first_pos[0]}, y: {self.first_pos[1]}")
