@@ -1,5 +1,10 @@
 """
 version 0.0.1.04032019 by Ammar
+-GUI Placeholder
+
+version 0.0.2 05032019 by Ammar
+-added version 2 of feature detection (in seperate func for now)
+
 """
 from kivy.config import Config
 # Config.set('graphics', 'resizable', '0') # 0 being off 1 being on as in true/false
@@ -53,7 +58,7 @@ class KivyCamera(Image):
             
             if ret:
                 # Do feature detection
-                frame = self.feature_detection(xframe)
+                frame = self.feature_detection_v2(xframe)
                 
                 # Convert it to texture for display in Kivy GUI
                 frame = cv2.flip(frame, 0) # Flip v
@@ -73,9 +78,6 @@ class KivyCamera(Image):
         temp = cv2.imread('1.jpg',1)
         template = cv2.cvtColor(temp, cv2.COLOR_BGR2GRAY)
         w,h = template.shape[::-1]
-        
-        d2 = cv2.matchShapes(img_gray,template,cv2.CONTOURS_MATCH_I2,0)
-        print(d2)
         
         res = cv2.matchTemplate(img_gray, template, cv2.TM_CCOEFF_NORMED)
         # Starting threshold value can be changes in kv file under Slider
@@ -104,6 +106,71 @@ class KivyCamera(Image):
             self.app.root.ids.main_page.ids.console.console_write("No ROI was selected!")
         cv2.destroyAllWindows()
         self.isRecording = True
+        
+    def feature_detection_v2(self, frame):
+        src = cv2.imread('1.jpg')
+        src2 = frame
+        # Convert image to grayscale
+        gray = cv2.cvtColor(src, cv2.COLOR_BGR2GRAY)
+        gray2 = cv2.cvtColor(src2, cv2.COLOR_BGR2GRAY)
+        
+        # Convert image to binary
+        _, bw = cv2.threshold(gray, 160, 255, cv2.THRESH_BINARY)
+        _2, bw2 = cv2.threshold(gray2, 160, 255, cv2.THRESH_BINARY)
+        contours, _ = cv2.findContours(bw, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+        contours2, _2 = cv2.findContours(bw2, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+        
+        list1, list2, i_list, i2_list = [], [], [], []
+        
+        for i, c in enumerate(contours):
+            # Calculate the area of each contour
+            area = cv2.contourArea(c);
+            # Ignore contours that are too small or too large
+            if area < 1e2 or 1e5 < area:
+                continue
+            list1.append(i)
+        for i2, c2 in enumerate(contours2):
+            # Calculate the area of each contour
+            area2 = cv2.contourArea(c2);
+            # Ignore contours that are too small or too large
+            if area2 < 1e2 or 1e5 < area2:
+                continue
+            list2.append(i2)
+        
+        for i in list1:
+            for i2 in list2:
+                ret = cv2.matchShapes(contours[i],contours2[i2],1,0.0)
+                ret1 = cv2.matchShapes(contours[i],contours2[i2],2,0.0)
+                ret2 = cv2.matchShapes(contours[i],contours2[i2],3,0.0)
+                if (ret <= 1 and ret1 <= 1.5 and ret2 <= 0.5):
+#                     print(f"ret: {ret}, ret1: {ret1}, ret2: {ret2}")
+                    i_list.append({'index': i, 'ret': ret})
+                    i2_list.append({'index': i2, 'ret': ret})
+        
+        comp = []
+        x, x2 = False, False
+        if len(i_list) > 1:
+            for x in i_list:
+                comp.append(x['ret'])
+            x = comp.index(min(comp))
+            x = i_list[x]['index']
+        elif i_list:
+            x = i_list[0]['index']
+        if len(i2_list) > 1:
+            comp.clear()
+            for x2 in i2_list:
+                comp.append(x2['ret'])
+            x2 = comp.index(min(comp))
+            x2 = i2_list[x2]['index']
+        elif i2_list:
+            x2 = i2_list[0]['index']
+        if x and x2:
+            cv2.drawContours(src, contours, x, (0, 0, 255), 2);
+            cv2.drawContours(src2, contours2, x2, (0, 0, 255), 2);
+            self.app.root.ids.main_page.ids.sidebar.ids.test_label.test_go()
+        else: self.app.root.ids.main_page.ids.sidebar.ids.test_label.test_ng()
+            
+        return src2
             
 class HoverBehavior(object):
     """Hover behavior.
