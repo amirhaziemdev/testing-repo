@@ -1,0 +1,21 @@
+cam = 0
+comport = 4
+baud = 9600
+send_interval = 1200
+slave_ID = 1
+start_address = 2040
+d = 15
+de = 40
+f = 0.375
+
+cam_width = 640
+cam_height = 480
+center_tolerance = 0.5
+y_thresh = 0
+v_thresh = 200
+
+paddingx = 35
+paddingy = 10
+
+tempH = 150
+tempY = 150
