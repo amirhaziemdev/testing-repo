@@ -1,10 +1,38 @@
 """
+Notes:
+1-  Limitations of template matching:
+    Template image and camera image must be:
+    1) Fixed distance
+    2) Fixed lighting
+    3) Fixed angle
+    *Using multiple images causes lag as data increases
+    *Will try to use multiprocessing method if possible (TBA)
+    
+2-  Currently testing haar cascade classifier to replace template matching
+    A type of deep learning
+    Pros:
+    1) Can handle scaling and a little bit of orientation
+    Limitations:
+    1) Must have a good image of object, bad image can cause tons of false alarm:
+        - Lighting of image must be the same when putting it in action
+        - Make sure the object and its background are contrast
+        - If object is fixed into another object, object image must contain
+          a little bit of background (lighting matters!)
+        - Training takes times especially if we want to try and compute
+          for larger pixels [recommended min pix = 20 either width of height]
+    2) Must have a lot of negative images (min 4000) for deep learning
+    3) Cant detect object if rotated. Rotation detection is quite low
+End of Notes
+
 version 0.0.1.04032019 by Ammar
 -GUI Placeholder
 
 version 0.0.2 05032019 by Ammar
 -added version 2 of feature detection (in seperate func for now)
 
+version 0.0.3 07032019 by Ammar
+-remove version 2 of feature detection
+-improve feature detection for multiple images
 """
 from kivy.config import Config
 # Config.set('graphics', 'resizable', '0') # 0 being off 1 being on as in true/false
@@ -21,6 +49,8 @@ from kivy.core.window import Window
 from kivy.graphics.texture import Texture
 import cv2
 import numpy as np
+import os
+from csv import reader
 from kivy.properties import BooleanProperty, ObjectProperty
 from kivy.factory import Factory
 from kivy.uix.screenmanager import Screen, ScreenManager
@@ -30,11 +60,14 @@ from kivy.uix.label import Label
 from kivy.graphics import Color, Rectangle
 
 class KivyCamera(Image):
-    isRecording =  True #KivyCamera attribute for start/stop cam feed
+    isRecording =  True # KivyCamera attribute for start/stop cam feed
+    isLearning = False # Attribute for getting dataset from initial capture
     
     def __init__(self, **kwargs):
         super(KivyCamera, self).__init__(**kwargs)
         self.app = App.get_running_app()
+        self.data_point = 1
+        self.point = 2
         
         # Select external cam and get fps
         self.capture = cv2.VideoCapture(1)
@@ -45,8 +78,7 @@ class KivyCamera(Image):
             raise ValueError("No camera found!")
         
         # Set refresh rate
-        Clock.schedule_interval(self.update, 1.0 / fps)
-        
+        Clock.schedule_interval(self.update, 1/fps)    
     def snap(self):
         ret, frame = self.capture.read()
         return ret, frame
@@ -58,7 +90,7 @@ class KivyCamera(Image):
             
             if ret:
                 # Do feature detection
-                frame = self.feature_detection_v2(xframe)
+                frame = self.feature_detection(xframe)
                 
                 # Convert it to texture for display in Kivy GUI
                 frame = cv2.flip(frame, 0) # Flip v
@@ -71,106 +103,75 @@ class KivyCamera(Image):
                 # display image from the texture
                 self.texture = image_texture
     
-    def feature_detection(self, frame):
+    def feature_detection(self, frame): # Using template matching
+        good = 0
+        # Get frame and change to gray
         img_bgr = frame
         img_gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
         
-        temp = cv2.imread('1.jpg',1)
-        template = cv2.cvtColor(temp, cv2.COLOR_BGR2GRAY)
-        w,h = template.shape[::-1]
+        # Get feature name and template image listing
+        """later can put this in init as it is being use repeatedly"""
+        feature = "buttons"
+        dir = f"template/{feature}/"
+        template_list = os.listdir(dir)
         
-        res = cv2.matchTemplate(img_gray, template, cv2.TM_CCOEFF_NORMED)
-        # Starting threshold value can be changes in kv file under Slider
-        threshold = self.app.root.ids.settings_page.ids.threshold.value
-        loc = np.where(res>=threshold)
+        # If listing is empty return back frame
+        if not template_list:
+            return img_bgr
         
-        if loc[0].any():
+        # Foreach image in feature dir do template matching with frame
+        for img in template_list:
+            template = cv2.imread(str(dir+img), 0)
+            h,w = template.shape[0:2]
+            
+            res = cv2.matchTemplate(img_gray, template, cv2.TM_CCOEFF_NORMED)
+            # Threshold for template matching can be control within GUI (default:0.8)
+            threshold = self.app.root.ids.settings_page.ids.threshold.value
+            loc = np.where(res>=threshold)
+            if loc[0].any():
+                good+=1
+            
+            # Draw on frame the matching region
+            for pt in zip(*loc[::-1]):
+                cv2.rectangle(img_bgr, pt, (pt[0]+w, pt[1]+h), (0,255,255), 1)
+        
+        # Kivy GUI manipulation for if there is a match
+        if good > 0:
             self.app.root.ids.main_page.ids.sidebar.ids.test_label.test_go()
-        else: self.app.root.ids.main_page.ids.sidebar.ids.test_label.test_ng()
-        
-        for pt in zip(*loc[::-1]):
-            cv2.rectangle(img_bgr, pt, (pt[0]+w, pt[1]+h), (0,255,255), 1)
-
-        cv2.imshow("Current Detection Template", temp)
+        else:
+            self.app.root.ids.main_page.ids.sidebar.ids.test_label.test_ng()
+                
         return img_bgr
+    
+    def write_image(self, imCrop):
+        cv2.imwrite("test/" + str(self.point) +".jpg", imCrop)
             
     def cv2_select_roi(self):
-        self.isRecording = False
+        # Get untouched frame for ROI selection
         ret, im = self.snap()
+        
+        # Get feature name and template image listing
+        feature = "buttons"
+        dir = f"template/{feature}/"
+        template_list = os.listdir(dir)
+        template_list = template_list[-1].split(".jpg")
+        next = int(template_list[0])+1
+        
+        # Text for console
+        success = f"Image captured successfully! Image saved in {dir} as {next}.jpg"
+        unsuccessful = "Image captureed unsuccessful"
+        
+        # Get user input on ROI
         r = cv2.selectROI("Image", im, False)
+        
+        # Write image if ROI is given, else return unsuccessful
         if r[1]:
             imCrop = im[int(r[1]):int(r[1]+r[3]), int(r[0]):int(r[0]+r[2])]
-            cv2.imwrite("1" + ".jpg", imCrop)
-            self.app.root.ids.main_page.ids.console.console_write("New image has been saved as 1.jpg")
+            cv2.imwrite(dir+str(next)+'.jpg', imCrop)
+            self.app.root.ids.main_page.ids.console.console_write(success)
         else:
-            self.app.root.ids.main_page.ids.console.console_write("No ROI was selected!")
+            self.app.root.ids.main_page.ids.console.console_write(unsuccessful)
         cv2.destroyAllWindows()
-        self.isRecording = True
-        
-    def feature_detection_v2(self, frame):
-        src = cv2.imread('1.jpg')
-        src2 = frame
-        # Convert image to grayscale
-        gray = cv2.cvtColor(src, cv2.COLOR_BGR2GRAY)
-        gray2 = cv2.cvtColor(src2, cv2.COLOR_BGR2GRAY)
-        
-        # Convert image to binary
-        _, bw = cv2.threshold(gray, 160, 255, cv2.THRESH_BINARY)
-        _2, bw2 = cv2.threshold(gray2, 160, 255, cv2.THRESH_BINARY)
-        contours, _ = cv2.findContours(bw, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
-        contours2, _2 = cv2.findContours(bw2, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
-        
-        list1, list2, i_list, i2_list = [], [], [], []
-        
-        for i, c in enumerate(contours):
-            # Calculate the area of each contour
-            area = cv2.contourArea(c);
-            # Ignore contours that are too small or too large
-            if area < 1e2 or 1e5 < area:
-                continue
-            list1.append(i)
-        for i2, c2 in enumerate(contours2):
-            # Calculate the area of each contour
-            area2 = cv2.contourArea(c2);
-            # Ignore contours that are too small or too large
-            if area2 < 1e2 or 1e5 < area2:
-                continue
-            list2.append(i2)
-        
-        for i in list1:
-            for i2 in list2:
-                ret = cv2.matchShapes(contours[i],contours2[i2],1,0.0)
-                ret1 = cv2.matchShapes(contours[i],contours2[i2],2,0.0)
-                ret2 = cv2.matchShapes(contours[i],contours2[i2],3,0.0)
-                if (ret <= 1 and ret1 <= 1.5 and ret2 <= 0.5):
-#                     print(f"ret: {ret}, ret1: {ret1}, ret2: {ret2}")
-                    i_list.append({'index': i, 'ret': ret})
-                    i2_list.append({'index': i2, 'ret': ret})
-        
-        comp = []
-        x, x2 = False, False
-        if len(i_list) > 1:
-            for x in i_list:
-                comp.append(x['ret'])
-            x = comp.index(min(comp))
-            x = i_list[x]['index']
-        elif i_list:
-            x = i_list[0]['index']
-        if len(i2_list) > 1:
-            comp.clear()
-            for x2 in i2_list:
-                comp.append(x2['ret'])
-            x2 = comp.index(min(comp))
-            x2 = i2_list[x2]['index']
-        elif i2_list:
-            x2 = i2_list[0]['index']
-        if x and x2:
-            cv2.drawContours(src, contours, x, (0, 0, 255), 2);
-            cv2.drawContours(src2, contours2, x2, (0, 0, 255), 2);
-            self.app.root.ids.main_page.ids.sidebar.ids.test_label.test_go()
-        else: self.app.root.ids.main_page.ids.sidebar.ids.test_label.test_ng()
-            
-        return src2
             
 class HoverBehavior(object):
     """Hover behavior.
@@ -254,7 +255,14 @@ class Sidebar(BoxLayout):
 class GenericButton(Button, HoverBehavior):
     def __init__(self, **kwargs):
         super(GenericButton, self).__init__(**kwargs)
-        self.app = App.get_running_app()            
+        self.app = App.get_running_app()
+        
+    def toggle_learning(self):
+        if KivyCamera.isLearning:
+            KivyCamera.isLearning = False
+            return
+        KivyCamera.isLearning = True
+        return
         
     def on_enter(self):
         self.background_color=(0.5, 0.5, 0.5, 1)

@@ -109,6 +109,7 @@
     	text: "LEARN"
     	size_hint: 1, 0.2
     	on_press: app.root.ids.main_page.ids.console.console_write("LEARN Button Pressed")
+    	on_press: self.toggle_learning()
     	
     GenericButton:
     	id: reset_button
