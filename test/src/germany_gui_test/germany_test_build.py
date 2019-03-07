@@ -8,7 +8,7 @@ Notes:
     *Using multiple images causes lag as data increases
     *Will try to use multiprocessing method if possible (TBA)
     
-2-  Currently testing haar cascade classifier to replace template matching
+2-  Currently testing Haar cascade classifier to replace template matching
     A type of deep learning
     Pros:
     1) Can handle scaling and a little bit of orientation
@@ -19,9 +19,9 @@ Notes:
         - If object is fixed into another object, object image must contain
           a little bit of background (lighting matters!)
         - Training takes times especially if we want to try and compute
-          for larger pixels [recommended min pix = 20 either width of height]
+          for larger pixels [recommended min pix = 20 either width or height]
     2) Must have a lot of negative images (min 4000) for deep learning
-    3) Cant detect object if rotated. Rotation detection is quite low
+    3) Can't detect object if rotated. Rotation detection is quite low
 End of Notes
 
 version 0.0.1.04032019 by Ammar
@@ -154,7 +154,10 @@ class KivyCamera(Image):
         feature = "buttons"
         dir = f"template/{feature}/"
         template_list = os.listdir(dir)
-        template_list = template_list[-1].split(".jpg")
+        if not template_list:
+            template_list = [0]
+        else:
+            template_list = template_list[-1].split(".jpg")
         next = int(template_list[0])+1
         
         # Text for console
