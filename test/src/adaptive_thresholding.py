@@ -46,10 +46,15 @@ else:
     #otherwise, grab value set to flag
     darkbg = args["darkbg"]
 
+#these values are in pixels
+[x1,y1,x2,y2]=[0,1300,700,2300]
 
-img = cv.imread('cardoor_test_photos/cardoor-07-01-2019-14-29-21.jpg',0)
-# img = img[c1:c1+25,r1:r1+25]
+img = cv.imread('test_photos/IMG_0579.jpg',0)
 img = cv.medianBlur(img,5)
+
+#this is for array slicing:::: y first, then x
+# img = img[y1:y2,x1:x2]
+
 if not darkbg:
     ret,th1 = cv.threshold(img,v_thresh,255,cv.THRESH_BINARY)
 else:
@@ -62,8 +67,12 @@ th3 = cv.adaptiveThreshold(img,255,cv.ADAPTIVE_THRESH_GAUSSIAN_C,\
 titles = ['Original Image', 'Global Thresholding (v = {})'.format(v_thresh),
             'Adaptive Mean Thresholding', 'Adaptive Gaussian Thresholding']
 images = [img, th1, th2, th3]
+
 for i in range(4):
     plt.subplot(2,2,i+1),plt.imshow(images[i],'gray')
-    plt.title(titles[i])
+    if i == 5:
+        plt.title('The boundaries are: ({},{}) and ({},{})'.format(x1,y1,x2,y2))
+    else:
+        plt.title(titles[i])
     plt.xticks([]),plt.yticks([])
 plt.show()

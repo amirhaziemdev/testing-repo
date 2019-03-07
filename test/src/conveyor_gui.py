@@ -68,6 +68,7 @@ Version 4/2/2019
 Removed a chunk of code and various implementations are either added or removed, I lost track of everything.
 But this version should be the final webcam version before implementing IP camera in the actual conveyor.
 Implemented dictionary for easy import of constants from text file. Current text file is configs.txt
+This version also includes implementation for direct modbus communications, omitting the serial class implementation.
 
 Note to self:
 Add options to adjust camera specs. Resolutions, distances, angle, field of view, etc.
@@ -141,7 +142,7 @@ comport = my_constants['comport']
 baud = my_constants['baud']
 send_interval = my_constants['send_interval'] #ms
 slave_ID = my_constants['slave_ID']
-start_address = my_constants['cam'] #address to which the program will write
+start_address = my_constants['start_address'] #address to which the program will write
 d = my_constants['d'] #cm
 de = my_constants['de'] #cm
 f = my_constants['f'] #factor by which the distance is multiplied
@@ -279,13 +280,13 @@ class App():
         self.btn_darkbg = Button(self.window, text = "Dark Background", width = 20, command = self.set_darkbg).grid(row = 12, column = 1)
         self.btn_overlay = Button(self.window, text = "Overlay", width = 20, command = self.set_overlay).grid(row = 12, column = 2)
         self.dummy = Button(self.window, text = 'Dummy Press', width = 20, command = self.dummy_button_press).grid(row = 12, column = 3)
-#         self.btn_porttoggle = Button(self.window, textvariable = self.COMPortButton, width = 20, command = self.portToggle).grid(row = 12, column = 4)
+        self.btn_porttoggle = Button(self.window, textvariable = self.COMPortButton, width = 20, command = self.portToggle).grid(row = 12, column = 4)
 
         self.temp = 0
         #after it is called once, the update will be automatically called after every delay ms
         self.delay = 15
         self.senddelay = send_interval
-        self.send_IO()
+#         self.send_IO()
         self.update()
         
         self.window.mainloop()
@@ -302,10 +303,11 @@ class App():
         self.window.after(self.senddelay, self.send_IO)
         
     def portToggle(self):
-        if self.serialPort.IsOpen():
-            self.closePort()
+        if self.COMPortButton.get() == 'Open Port':
+            self.send_IO()
+            self.COMPortButton.set('Close Port')
         else:
-            self.openPort()
+            self.COMPortButton.set('Open Port')
     
     def openPort(self):
         try:
