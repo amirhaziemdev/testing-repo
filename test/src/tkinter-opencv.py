@@ -39,10 +39,12 @@ import tkinter
 import cv2
 import PIL.Image, PIL.ImageTk
 import time
+from tkinter import *
 from Tools.scripts.texi2html import increment
-from tkinter import StringVar
 
 #default values, can be included in GUI
+#these settings should be in an .init file or something
+#should be a text file with editable constants along with the executable
 cam = 0
 d = 15 #cm
 de = 40 #cm
@@ -51,8 +53,6 @@ f = 0.375 #factor by which the distance is multiplied
 #constants
 cam_width = 640
 cam_height = 480
-
-
 
 class App():
     def __init__(self, window, window_title, video_source=cam):
@@ -72,18 +72,46 @@ class App():
         self.btn_snapshot = tkinter.Button(window, text = "Snapshot", width = 50, command = self.snapshot)
         self.btn_snapshot.pack(anchor=tkinter.CENTER, expand = True)
         
+        #init regions of interest list
+        self.ROIs = []
+        
         #initialise values
         [self.thresh_px_lo, self.thresh_px_hi, self.thresh_rd_lo, self.thresh_rd_hi] = [1, 20000, 12, 1000]
         var1 = StringVar(window)
         var2 = StringVar(window)
         var3 = StringVar(window)
         var4 = StringVar(window)
-        var1.set("20000")
-        var2.set("1")
-        var3.set("1000")
-        var4.set("12")
+        var1.set(self.thresh_px_hi)
+        var2.set(self.thresh_px_lo)
+        var3.set(self.thresh_rd_hi)
+        var4.set(self.thresh_rd_lo)
         self.darkbg = False
         self.overlay = False
+        
+        #init all status boxes
+        self.st0 = StringVar(value = '0')
+        self.st1 = StringVar(value = '0')
+        self.st2 = StringVar(value = '0')
+        self.st3 = StringVar(value = '0')
+        self.st4 = StringVar(value = '0')
+        self.st5 = StringVar(value = '0')
+        self.st6 = StringVar(value = '0')
+        self.st7 = StringVar(value = '0')
+
+        self.stat0 = Label(window, textvariable=self.st0, bg = 'white').pack(padx=10, pady=10, side=LEFT)
+        
+        '''
+        use this code below (self.st0.set('blah')) for updating ID and status of mold. let them be in functions
+        '''
+        self.st0.set('40')
+        
+        self.stat1 = Label(window, textvariable=self.st1, bg = 'white').pack(padx=10, pady=10, side=LEFT)
+        self.stat2 = Label(window, textvariable=self.st2, bg = 'white').pack(padx=10, pady=10, side=LEFT)
+        self.stat3 = Label(window, textvariable=self.st3, bg = 'white').pack(padx=10, pady=10, side=LEFT)
+        self.stat4 = Label(window, textvariable=self.st4, bg = 'white').pack(padx=10, pady=10, side=LEFT)
+        self.stat5 = Label(window, textvariable=self.st5, bg = 'white').pack(padx=10, pady=10, side=LEFT)
+        self.stat6 = Label(window, textvariable=self.st6, bg = 'white').pack(padx=10, pady=10, side=LEFT)
+        self.stat7 = Label(window, textvariable=self.st7, bg = 'white').pack(padx=10, pady=10, side=LEFT)
         
         #sliders/spinboxes for controlling threshold
         self.sliders_px_hi = tkinter.Spinbox(window, from_=0, to=20000, command = self.set_thresh, increment = 100.0, textvariable = var1)
@@ -97,11 +125,12 @@ class App():
         
         #buttons for controlling overlay, darkbg
         self.btn_darkbg = tkinter.Button(window, text = "Dark Background", width = 20, command = self.set_darkbg)
-        self.btn_darkbg.pack(side = 'left')
+        self.btn_darkbg.pack(side = LEFT)
         self.btn_overlay = tkinter.Button(window, text = "Overlay", width = 20, command = self.set_overlay)
-        self.btn_overlay.pack(side = 'left')
+        self.btn_overlay.pack(side = LEFT)
 #         self.btn_snapshot = tkinter.Button(window, text = "Snapshot", width = 50, command = self.snapshot)
 #         self.btn_snapshot.pack(anchor=tkinter.CENTER, expand = True)
+
         
         #after it is called once, the update will be automatically called after every delay ms
         self.delay = 15
@@ -109,13 +138,21 @@ class App():
         
         self.window.mainloop()
     
+    def create_new_ROI(self):
+        temp = cv2.selectROI()
+        self.ROIs.append(temp)
+        print('Appended ', temp)
+        return self.ROIs
+    
     def create_new_mold(self, ID, status):
         #instantiate a new mold
-        mold = Mold(ID, status)
-        print(ID, status)
-        return mold
+        self.mold = Mold(ID, status)
+        print("Mold created! ID: {}, status: {}".format(ID, status))
+        return self.mold
     
-    
+    def destroy_mold(self):
+        self.mold.destroy()
+        
     #boolean, will return true or false
     #function call for setting overlay true/false from overlay button. called at __init__
     def set_darkbg(self):
@@ -249,6 +286,10 @@ class App():
             cnts = contours.sort_contours(cnts)[0]
         except:
             print("No object detected within threshold!\nCheck:\n1)Threshold values, and\n2)Debugging steps")
+            '''
+            optional, can be included in final version:
+            break
+            '''
             
         '''
         more filtering for noise should be added here. should take the average number of times the pixel coords appear within frame
@@ -343,11 +384,11 @@ class Mold():
     
     #call for destroy
     def destroy(self):
-        self.ID = []
-        self.status = False
-                    
+        self.ID.delete()
+        self.status.delete()
+
 def main():
-    App(tkinter.Tk(), "tkinter and opencv")
+    App(tkinter.Tk(), "Tkinter and OpenCV")
     
 if __name__ == "__main__":
     main()

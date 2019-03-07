@@ -62,7 +62,7 @@ class KivyCamera(Image):
         template = cv2.imread('1.jpg',0)
         w,h = template.shape[::-1]
         
-        res = cv2.matchTemplate(img_gray, template, cv2.TM_CCOEFF_NORMED)
+        res = cv2.matchTemplate(img_gray, template, cv2.TM_CCORR_NORMED)
         threshold = 0.8
         loc = np.where(res>=threshold)
         

@@ -19,7 +19,7 @@ from imutils.video.fps import FPS
 #construct argument parser
 ap = argparse.ArgumentParser()
 ap.add_argument("-v", "--video", type=str, help="path to input video file")
-ap.add_argument("-t", "--tracker", type=str, default='kcf', help="OpenCV object tracker type")
+ap.add_argument("-t", "--tracker", type=str, default='kcf', help="OpenCV object tracker type, defaulted to KCF")
 args = vars(ap.parse_args())
 
 #extract OpenCV version info
@@ -38,10 +38,6 @@ else:
         "medianflow": cv2.TrackerMedianFlow_create,
         "mosse": cv2.TrackerMOSSE_create
     }
-    
-
-#grab appropriate object tracker using dictionary of opencv object trackers
-tracker = OPENCV_OBJECT_TRACKERS[args["tracker"]]()
 
 #init bounding box coords of the object we are going to track
 initBB = None
@@ -51,10 +47,13 @@ if not args.get("video", False):
     print("[INFO] starting video stream...")
     vs = VideoStream(src=0).start()
     time.sleep(1.0)
-    
-    #otherwise, grab a ref to the vid file
 else:
+    #otherwise, grab a ref to the vid file
     vs = cv2.VideoCapture(args["video"])
+
+
+#grab appropriate object tracker using dictionary of opencv object trackers
+tracker = OPENCV_OBJECT_TRACKERS[args["tracker"]]()
     
 #init FPS throughput estimator
 fps = None
