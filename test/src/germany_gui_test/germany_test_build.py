@@ -33,6 +33,11 @@ version 0.0.2 05032019 by Ammar
 version 0.0.3 07032019 by Ammar
 -remove version 2 of feature detection
 -improve feature detection for multiple images
+
+version 0.0.4 08032019 by Ammar
+-added lbp cascade classifier for object detection
+    -very laggy
+
 """
 from kivy.config import Config
 # Config.set('graphics', 'resizable', '0') # 0 being off 1 being on as in true/false
@@ -68,6 +73,7 @@ class KivyCamera(Image):
         self.app = App.get_running_app()
         self.data_point = 1
         self.point = 2
+        self.calc_cascade = cv2.CascadeClassifier('calc_2.xml')
         
         # Select external cam and get fps
         self.capture = cv2.VideoCapture(1)
@@ -142,6 +148,20 @@ class KivyCamera(Image):
             self.app.root.ids.main_page.ids.sidebar.ids.test_label.test_ng()
                 
         return img_bgr
+    
+    def feature_detection_lbp(self, frame):
+        good = 0
+        # Get frame and change to gray
+        img = frame
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        
+        calc = self.calc_cascade.detectMultiScale(gray, 1.1, 5)
+        
+        for (x,y,w,h) in calc:
+            cv2.rectangle(img,(x,y),(x+w,y+h),(0,0,255),4)
+            cv2.putText(img, 'Calculator', (x-10,y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,255), 2)
+        
+        return img
     
     def write_image(self, imCrop):
         cv2.imwrite("test/" + str(self.point) +".jpg", imCrop)
