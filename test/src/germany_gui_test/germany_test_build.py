@@ -1,29 +1,4 @@
 """
-Notes:
-1-  Limitations of template matching:
-    Template image and camera image must be:
-    1) Fixed distance
-    2) Fixed lighting
-    3) Fixed angle
-    *Using multiple images causes lag as data increases
-    *Will try to use multiprocessing method if possible (TBA)
-    
-2-  Currently testing Haar cascade classifier to replace template matching
-    A type of deep learning
-    Pros:
-    1) Can handle scaling and a little bit of orientation
-    Limitations:
-    1) Must have a good image of object, bad image can cause tons of false alarm:
-        - Lighting of image must be the same when putting it in action
-        - Make sure the object and its background are contrast
-        - If object is fixed into another object, object image must contain
-          a little bit of background (lighting matters!)
-        - Training takes times especially if we want to try and compute
-          for larger pixels [recommended min pix = 20 either width or height]
-    2) Must have a lot of negative images (min 4000) for deep learning
-    3) Can't detect object if rotated. Rotation detection is quite low
-End of Notes
-
 version 0.0.1.04032019 by Ammar
 -GUI Placeholder
 
@@ -38,6 +13,8 @@ version 0.0.4 08032019 by Ammar
 -added lbp cascade classifier for object detection
     -very laggy
 
+version 0.0.5 11032019 by Ammar
+-moves top not to a seperate readme files
 """
 from kivy.config import Config
 # Config.set('graphics', 'resizable', '0') # 0 being off 1 being on as in true/false
@@ -96,7 +73,7 @@ class KivyCamera(Image):
             
             if ret:
                 # Do feature detection
-                frame = self.feature_detection(xframe)
+                frame = self.feature_detection_lbp(xframe)
                 
                 # Convert it to texture for display in Kivy GUI
                 frame = cv2.flip(frame, 0) # Flip v
