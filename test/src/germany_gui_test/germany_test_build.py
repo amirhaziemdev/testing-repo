@@ -15,6 +15,13 @@ version 0.0.4 08032019 by Ammar
 
 version 0.0.5 11032019 by Ammar
 -moves top not to a seperate readme files
+
+version 0.0.6 11032019 by Ammar
+-added object detection with KAZE + flann method
+-added choosing feature detection function
+-minor GUI changes
+
+version 0.0.7 11032019 by Ammar
 """
 from kivy.config import Config
 # Config.set('graphics', 'resizable', '0') # 0 being off 1 being on as in true/false
@@ -44,24 +51,35 @@ from kivy.graphics import Color, Rectangle
 class KivyCamera(Image):
     isRecording =  True # KivyCamera attribute for start/stop cam feed
     isLearning = False # Attribute for getting dataset from initial capture
+    object_ = open("object_list.txt", "r").read().split("\n")
+    object_detect = object_[0]
+    object_write = object_[0]
+    feature = open("feature_list.txt", "r").read().split("\n") # Current feature list
+    feature_detect = feature[0] # For detection on camera
+    feature_write = feature[0] # For writing new images to feature dir
     
     def __init__(self, **kwargs):
         super(KivyCamera, self).__init__(**kwargs)
         self.app = App.get_running_app()
-        self.data_point = 1
-        self.point = 2
-        self.calc_cascade = cv2.CascadeClassifier('calc_2.xml')
+
+        # Settings for object detection
+        self.kaze = cv2.KAZE_create()
+        # FLANN parameters
+        FLANN_INDEX_KDTREE = 0
+        index_params = dict(algorithm = FLANN_INDEX_KDTREE, trees = 5)
+        search_params = dict(checks=50)   # or pass empty dictionary
+        self.flann = cv2.FlannBasedMatcher(index_params,search_params)
         
         # Select external cam and get fps
-        self.capture = cv2.VideoCapture(1)
-        fps = self.capture.get(cv2.CAP_PROP_FPS)
-        
-        # Check for camera
-        if fps == 0:
+        try:
+            self.capture = cv2.VideoCapture(1)
+            fps = self.capture.get(cv2.CAP_PROP_FPS)
+        except:
             raise ValueError("No camera found!")
         
         # Set refresh rate
-        Clock.schedule_interval(self.update, 1/fps)    
+        Clock.schedule_interval(self.update, 1/fps)
+
     def snap(self):
         ret, frame = self.capture.read()
         return ret, frame
@@ -73,7 +91,8 @@ class KivyCamera(Image):
             
             if ret:
                 # Do feature detection
-                frame = self.feature_detection_lbp(xframe)
+                # frame = self.feature_detection_lbp(xframe)
+                frame = self.object_detection(xframe)
                 
                 # Convert it to texture for display in Kivy GUI
                 frame = cv2.flip(frame, 0) # Flip v
@@ -85,72 +104,27 @@ class KivyCamera(Image):
                 image_texture.blit_buffer(buf, colorfmt="bgr", bufferfmt="ubyte")
                 # display image from the texture
                 self.texture = image_texture
-    
-    def feature_detection(self, frame): # Using template matching
-        good = 0
-        # Get frame and change to gray
-        img_bgr = frame
-        img_gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
-        
-        # Get feature name and template image listing
-        """later can put this in init as it is being use repeatedly"""
-        feature = "buttons"
-        dir = f"template/{feature}/"
-        template_list = os.listdir(dir)
-        
-        # If listing is empty return back frame
-        if not template_list:
-            return img_bgr
-        
-        # Foreach image in feature dir do template matching with frame
-        for img in template_list:
-            template = cv2.imread(str(dir+img), 0)
-            h,w = template.shape[0:2]
-            
-            res = cv2.matchTemplate(img_gray, template, cv2.TM_CCOEFF_NORMED)
-            # Threshold for template matching can be control within GUI (default:0.8)
-            threshold = self.app.root.ids.settings_page.ids.threshold.value
-            loc = np.where(res>=threshold)
-            if loc[0].any():
-                good+=1
-            
-            # Draw on frame the matching region
-            for pt in zip(*loc[::-1]):
-                cv2.rectangle(img_bgr, pt, (pt[0]+w, pt[1]+h), (0,255,255), 1)
-        
-        # Kivy GUI manipulation for if there is a match
-        if good > 0:
-            self.app.root.ids.main_page.ids.sidebar.ids.test_label.test_go()
-        else:
-            self.app.root.ids.main_page.ids.sidebar.ids.test_label.test_ng()
-                
-        return img_bgr
-    
-    def feature_detection_lbp(self, frame):
-        good = 0
-        # Get frame and change to gray
-        img = frame
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        
-        calc = self.calc_cascade.detectMultiScale(gray, 1.1, 5)
-        
-        for (x,y,w,h) in calc:
-            cv2.rectangle(img,(x,y),(x+w,y+h),(0,0,255),4)
-            cv2.putText(img, 'Calculator', (x-10,y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,255), 2)
-        
-        return img
-    
-    def write_image(self, imCrop):
-        cv2.imwrite("test/" + str(self.point) +".jpg", imCrop)
+
+    def object_detection(self, frame):
+        gray_f = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY)
+        return frame
             
     def cv2_select_roi(self):
         # Get untouched frame for ROI selection
         ret, im = self.snap()
         
         # Get feature name and template image listing
-        feature = "buttons"
-        dir = f"template/{feature}/"
-        template_list = os.listdir(dir)
+        object_ = KivyCamera.object_write
+        feature = KivyCamera.feature_write
+        dir = f"template/{object_}/{feature}/"
+
+        # Check if feature directory exist, Create new if doesnt
+        try:
+            template_list = os.listdir(dir)
+        except:
+            os.mkdir(dir)
+
+        # Get latest filename. if empty start from 1
         if not template_list:
             template_list = [0]
         else:
@@ -158,7 +132,8 @@ class KivyCamera(Image):
         next = int(template_list[0])+1
         
         # Text for console
-        success = f"Image captured successfully! Image saved in {dir} as {next}.jpg"
+        success1 = f"Image captured successfully! Image saved in {dir} as {next}.jpg"
+        success2 = f"{feature} now has {len(template_list)} numbers of data"
         unsuccessful = "Image captureed unsuccessful"
         
         # Get user input on ROI
@@ -168,7 +143,8 @@ class KivyCamera(Image):
         if r[1]:
             imCrop = im[int(r[1]):int(r[1]+r[3]), int(r[0]):int(r[0]+r[2])]
             cv2.imwrite(dir+str(next)+'.jpg', imCrop)
-            self.app.root.ids.main_page.ids.console.console_write(success)
+            self.app.root.ids.main_page.ids.console.console_write(success1)
+            self.app.root.ids.main_page.ids.console.console_write(success2)
         else:
             self.app.root.ids.main_page.ids.console.console_write(unsuccessful)
         cv2.destroyAllWindows()
@@ -236,33 +212,32 @@ class Console(ScrollView):
         self.console.text += "[ console ]  " + text + "\n"
         self.scroll_to(self.ids.console) # For autoscrolling
         
-class Sidebar(BoxLayout):
+class MainSidebar(BoxLayout):
     def __init__(self, **kwargs):
-        super(Sidebar, self).__init__(**kwargs)
+        super(MainSidebar, self).__init__(**kwargs)
         self.app = App.get_running_app()
         
     def change_page(self):
-        if self.app.root.ids.main_page.manager.current == "main_page":
-            self.app.root.ids.main_page.manager.current = "settings_page"
-            self.app.root.ids.settings_page.ids.sidebar.ids.settings_button.text = "BACK"
-            self.app.root.ids.main_page.ids.console.console_write("Entered SETTINGS Page!")
-            self.app.root.ids.settings_page.ids.console.console_write("Entered SETTINGS Page!")
-        else:
-            self.app.root.ids.main_page.manager.current = "main_page"
-            self.app.root.ids.main_page.ids.console.console_write("Exited SETTINGS Page!")
-            self.app.root.ids.settings_page.ids.console.console_write("Exited SETTINGS Page!")
+        KivyCamera.isRecording = False
+        self.app.root.ids.main_page.manager.current = "settings_page"
+        self.app.root.ids.main_page.ids.console.console_write("Entered SETTINGS Page!")
+        self.app.root.ids.settings_page.ids.console.console_write("Entered SETTINGS Page!")
+
+class SettingsSidebar(BoxLayout):
+    def __init__(self, **kwargs):
+        super(SettingsSidebar, self).__init__(**kwargs)
+        self.app = App.get_running_app()
+        
+    def change_page(self):
+        KivyCamera.isRecording = True
+        self.app.root.ids.main_page.manager.current = "main_page"
+        self.app.root.ids.main_page.ids.console.console_write("Exited SETTINGS Page!")
+        self.app.root.ids.settings_page.ids.console.console_write("Exited SETTINGS Page!")
         
 class GenericButton(Button, HoverBehavior):
     def __init__(self, **kwargs):
         super(GenericButton, self).__init__(**kwargs)
         self.app = App.get_running_app()
-        
-    def toggle_learning(self):
-        if KivyCamera.isLearning:
-            KivyCamera.isLearning = False
-            return
-        KivyCamera.isLearning = True
-        return
         
     def on_enter(self):
         self.background_color=(0.5, 0.5, 0.5, 1)
@@ -294,11 +269,11 @@ class TestLabel(Button):
     
     def test_go(self):
         self.background_color=(0.0, 0.5, 0.0, 1)
-        self.text = "GO!"
+        self.text = "GOOD!"
     
     def test_ng(self):
         self.background_color=(0.5, 0.0, 0.0, 1)
-        self.text = "NG!"
+        self.text = "BAD!"
     
 class GermanyApp(App):
     def build(self):
