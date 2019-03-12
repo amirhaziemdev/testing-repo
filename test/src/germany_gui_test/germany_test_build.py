@@ -79,7 +79,7 @@ class KivyCamera(Image):
 
         # Select external cam and get fps
         try:
-            self.capture = cv2.VideoCapture(0)
+            self.capture = cv2.VideoCapture(1)
             fps = self.capture.get(cv2.CAP_PROP_FPS)
         except:
             raise ValueError("No camera found!")

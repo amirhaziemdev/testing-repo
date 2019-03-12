@@ -38,6 +38,7 @@
 		BoxLayout:
 			orientation: "vertical"
 			size_hint: 640, 1
+			size: 640, 480
 			
 			BoxLayout:
 				orientation: "vertical"
@@ -56,8 +57,10 @@
 					min: 0
 					max: 1
 					value: 0.8
-					step:0.01
-					on_touch_up: app.root.ids.settings_page.ids.console.console_write(f"Changed feature threshold value to {self.value}!")
+					step: 0.01
+				
+				BoxLayout:
+					size_hint: 1, 0.8
 			
 			Console:
 				id: console
@@ -88,9 +91,9 @@
     
     RedButton:
     	id: start_button
-    	text: "START"
+    	text: "ON/OFF"
     	size_hint: 1, 0.17
-    	background_color: (1.0, 0.3, 0.3, 1.0)
+    	background_color: (1.0, 0.1, 0.1, 1.0)
     	on_press: self.cam_toggle()
     	
     # Placeholder for feature detection status, If doesnt change then there is a problem with detection code
@@ -117,7 +120,7 @@
     	id: reset_button
     	text: "RESET"
     	size_hint: 1, 0.17
-    	on_press: app.root.ids.main_page.ids.console.console_write("RESET Button Pressed")
+    	on_press: app.root.ids.main_page.ids.console.console_write("Feature Data RESET!")
     	
     GenericButton:
     	id: settings_button

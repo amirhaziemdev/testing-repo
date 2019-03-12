@@ -20,6 +20,10 @@ version 0.0.6 11032019 by Ammar
 -added object detection with KAZE + flann method
 -added choosing feature detection function
 -minor GUI changes
+
+version 0.0.7 12032019 by Ammar
+-back to using template matching for feature detection
+-more GUI functions ( Reset )
 """
 from kivy.config import Config
 # Config.set('graphics', 'resizable', '0') # 0 being off 1 being on as in true/false
@@ -37,7 +41,7 @@ from kivy.graphics.texture import Texture
 import cv2
 import numpy as np
 import os
-from csv import reader
+import shutil
 from kivy.properties import BooleanProperty, ObjectProperty
 from kivy.factory import Factory
 from kivy.uix.screenmanager import Screen, ScreenManager
@@ -45,13 +49,10 @@ from kivy.uix.scrollview import ScrollView
 from kivy.uix.button import Button
 from kivy.uix.label import Label
 from kivy.graphics import Color, Rectangle
+from kivy.uix.dropdown import DropDown
 
 class KivyCamera(Image):
-    isRecording =  True # KivyCamera attribute for start/stop cam feed
-    isLearning = False # Attribute for getting dataset from initial capture
-    object_ = open("object_list.txt", "r").read().split("\n")
-    object_detect = object_[0]
-    object_write = object_[0]
+    isDetecting =  True # KivyCamera attribute for start/stop cam feed
     feature = open("feature_list.txt", "r").read().split("\n") # Current feature list
     feature_detect = feature[0] # For detection on camera
     feature_write = feature[0] # For writing new images to feature dir
@@ -59,7 +60,6 @@ class KivyCamera(Image):
     def __init__(self, **kwargs):
         super(KivyCamera, self).__init__(**kwargs)
         self.app = App.get_running_app()
-        self.calc_cascade = cv2.CascadeClassifier('calc_2.xml')
         
         # Select external cam and get fps
         try:
@@ -76,36 +76,33 @@ class KivyCamera(Image):
         return ret, frame
 
     def update(self, dt):
-        # Don't update if set to not recording
-        if self.isRecording == True:
-            ret, xframe = self.snap()
+        ret, frame = self.snap()
+        
+        if ret:
+            # Do feature detection
+            if self.isDetecting == True:
+                frame = self.feature_detection(frame)
             
-            if ret:
-                # Do feature detection
-                # frame = self.feature_detection_lbp(xframe)
-                frame = self.feature_detection(xframe)
-                
-                # Convert it to texture for display in Kivy GUI
-                frame = cv2.flip(frame, 0) # Flip v
-                w, h = int(self.width), int(self.height)
-                buf = cv2.resize(frame, (w,h))
-                buf = buf.tostring()
-                image_texture = Texture.create(
-                    size=(w, h), colorfmt="bgr")
-                image_texture.blit_buffer(buf, colorfmt="bgr", bufferfmt="ubyte")
-                # display image from the texture
-                self.texture = image_texture
+            # Convert it to texture for display in Kivy GUI
+            frame = cv2.flip(frame, 0) # Flip v
+            w, h = int(self.width), int(self.height)
+            buf = cv2.resize(frame, (w,h))
+            buf = buf.tostring()
+            image_texture = Texture.create(
+                size=(w, h), colorfmt="bgr")
+            image_texture.blit_buffer(buf, colorfmt="bgr", bufferfmt="ubyte")
+            # display image from the texture
+            self.texture = image_texture
             
     def cv2_select_roi(self):
         # Get untouched frame for ROI selection
         ret, im = self.snap()
         
         # Get feature name and template image listing
-        object_ = KivyCamera.object_write
         feature = KivyCamera.feature_write
-        dir = f"template/{object_}/{feature}/"
+        dir = f"template/{feature}/"
 
-        # Check if feature directory exist, Create new if doesnt
+        # Check if feature directory exist, Create new if doesn't
         try:
             template_list = os.listdir(dir)
         except:
@@ -120,8 +117,7 @@ class KivyCamera(Image):
         
         # Text for console
         success1 = f"Image captured successfully! Image saved in {dir} as {next}.jpg"
-        success2 = f"{feature} now has {len(template_list)} numbers of data"
-        unsuccessful = "Image captureed unsuccessful"
+        unsuccessful = "Image captured unsuccessful! Cannot capture whole image!"
         
         # Get user input on ROI
         r = cv2.selectROI("Image", im, False)
@@ -143,9 +139,8 @@ class KivyCamera(Image):
         img_gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
         
         # Get feature name and template image listing
-        object_ = KivyCamera.object_write
-        feature = KivyCamera.feature_write
-        dir = f"template/{object_}/{feature}/"
+        feature = KivyCamera.feature_detect
+        dir = f"template/{feature}/"
         template_list = os.listdir(dir)
         
         # If listing is empty return back frame
@@ -176,74 +171,12 @@ class KivyCamera(Image):
                 
         return img_bgr
     
-    def feature_detection_lbp(self, frame): # Using LBP Classifier
-        good = 0
-        # Get frame and change to gray
-        img = frame
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        
-        calc = self.calc_cascade.detectMultiScale(gray, 1.1, 5)
-        
-        for (x,y,w,h) in calc:
-            cv2.rectangle(img,(x,y),(x+w,y+h),(0,0,255),4)
-            cv2.putText(img, 'Calculator', (x-10,y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,255), 2)
-        
-        return img
-
-    def object_detection_flann(self, frame): # Using KAZE with flann method
-        # Fixed variable to be put inside __init__
-        kaze = cv2.KAZE_create()
-        MIN_MATCH_COUNT = 10
-        gray1 = cv2.imread('images/calc_0.jpg',0) # queryImage
-        kp1, des1 = kaze.detectAndCompute(gray1,None)
-        # FLANN parameters
-        FLANN_INDEX_KDTREE = 0
-        index_params = dict(algorithm = FLANN_INDEX_KDTREE, trees = 5)
-        search_params = dict(checks=50)   # or pass empty dictionary
-        flann = cv2.FlannBasedMatcher(index_params,search_params)
-
-        gray2 = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        # find the keypoints and descriptors with kaze
-        kp2, des2 = kaze.detectAndCompute(gray2,None)
-        try:
-            matches = flann.knnMatch(des1,des2,k=2)
-            # Sort by their distance.
-            matches = sorted(matches, key = lambda x:x[0].distance)
-            # Ratio test, to get good matches.
-            good = [m1 for (m1, m2) in matches if m1.distance < 0.7 * m2.distance]
-            # find homography matrix
-            if len(good)>MIN_MATCH_COUNT:
-                src_pts = np.float32([ kp1[m.queryIdx].pt for m in good ]).reshape(-1,1,2)
-                dst_pts = np.float32([ kp2[m.trainIdx].pt for m in good ]).reshape(-1,1,2)
-                # find homography matrix in cv2.RANSAC using good match points
-                M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC,5.0)
-                h,w = gray1.shape[:2]
-                pts = np.float32([ [0,0],[0,h-1],[w-1,h-1],[w-1,0] ]).reshape(-1,1,2)
-                try:
-                    dst = cv2.perspectiveTransform(pts,M)
-                    cv2.polylines(frame,[np.int32(dst)],True,(0,255,0),3, cv2.LINE_AA)
-                    # cv2.putText(frame,"Calculator",(w-10,h-30), cv2.FONT_HERSHEY_SIMPLEX, 1, (200,0,0), 3, cv2.LINE_AA)
-                except:
-                    pass
-        except:
-            pass
-
-        return frame
+    def auto_image_rot(self, img):
+        pass
             
 class HoverBehavior(object):
-    """Hover behavior.
-    :Events:
-        `on_enter`
-            Fired when mouse enter the bbox of the widget.
-        `on_leave`
-            Fired when the mouse exit the widget 
-    """
-
     hovered = BooleanProperty(False)
     border_point= ObjectProperty(None)
-    """Contains the last relevant point received by the Hoverable. This can
-    be used in `on_enter` or `on_leave` in order to know where was dispatched the event.
-    """
 
     def __init__(self, **kwargs):
         self.register_event_type("on_enter")
@@ -281,8 +214,7 @@ class MainPage(Screen):
         super(MainPage, self).__init__(**kwargs)
         
 class SettingsPage(Screen):
-    def __init__(self, **kwargs):
-        super(SettingsPage, self).__init__(**kwargs)
+    pass
         
 class Console(ScrollView):
     console = ObjectProperty()
@@ -298,8 +230,48 @@ class MainSidebar(BoxLayout):
         super(MainSidebar, self).__init__(**kwargs)
         self.app = App.get_running_app()
         
+    def reset(self):
+        feature = open("feature_list.txt", "w")
+        feature.write("feature1\nfeature2\n")
+        feature.close()
+        feature = open("feature_list.txt", "r").read().split("\n")
+        KivyCamera.feature_detect = feature[0]
+        KivyCamera.feature_write = feature[0]
+        
+        for each in feature:
+            shutil.rmtree(f"template/{each}")
+        self.copytree("data","template")
+        
+        self.app.root.ids.main_page.ids.console.console_write("DATA RESET!!!")
+        
+    def copytree(self, src, dst, symlinks = False, ignore = None):
+        if not os.path.exists(dst):
+            os.makedirs(dst)
+            shutil.copystat(src, dst)
+        lst = os.listdir(src)
+        if ignore:
+            excl = ignore(src, lst)
+            lst = [x for x in lst if x not in excl]
+        for item in lst:
+            s = os.path.join(src, item)
+            d = os.path.join(dst, item)
+            if symlinks and os.path.islink(s):
+                if os.path.lexists(d):
+                    os.remove(d)
+                os.symlink(os.readlink(s), d)
+                try:
+                    st = os.lstat(s)
+                    mode = stat.S_IMODE(st.st_mode)
+                    os.lchmod(d, mode)
+                except:
+                    pass # lchmod not available
+            elif os.path.isdir(s):
+                self.copytree(s, d, symlinks, ignore)
+            else:
+                shutil.copy2(s, d)
+        
     def change_page(self):
-        KivyCamera.isRecording = False
+        KivyCamera.isDetecting = False
         self.app.root.ids.main_page.manager.current = "settings_page"
         self.app.root.ids.main_page.ids.console.console_write("Entered SETTINGS Page!")
         self.app.root.ids.settings_page.ids.console.console_write("Entered SETTINGS Page!")
@@ -310,7 +282,7 @@ class SettingsSidebar(BoxLayout):
         self.app = App.get_running_app()
         
     def change_page(self):
-        KivyCamera.isRecording = True
+        KivyCamera.isDetecting = True
         self.app.root.ids.main_page.manager.current = "main_page"
         self.app.root.ids.main_page.ids.console.console_write("Exited SETTINGS Page!")
         self.app.root.ids.settings_page.ids.console.console_write("Exited SETTINGS Page!")
@@ -331,17 +303,17 @@ class RedButton(Button, HoverBehavior):
         self.app = App.get_running_app()
         
     def cam_toggle(self):
-        if KivyCamera.isRecording == True:
-            KivyCamera.isRecording = False
-            self.app.root.ids.main_page.ids.console.console_write("CAMERA has stopped!")
+        if KivyCamera.isDetecting == True:
+            KivyCamera.isDetecting = False
+            self.app.root.ids.main_page.ids.console.console_write("Feature Detection has been turned OFF!")
         else:
-            KivyCamera.isRecording = True
-            self.app.root.ids.main_page.ids.console.console_write("CAMERA is running!")
+            KivyCamera.isDetecting = True
+            self.app.root.ids.main_page.ids.console.console_write("Feature Detection has turned ON!")
             
     def on_enter(self):
-        self.background_color=(1.0, 0.1, 0.1, 1)
-    def on_leave(self):
         self.background_color=(1.0, 0.3, 0.3, 1)
+    def on_leave(self):
+        self.background_color=(1.0, 0.1, 0.1, 1)
         
 class TestLabel(Button):
     def __init__(self, **kwargs):
@@ -355,6 +327,14 @@ class TestLabel(Button):
     def test_ng(self):
         self.background_color=(0.5, 0.0, 0.0, 1)
         self.text = "BAD!"
+        
+class CustomDropDown(DropDown):
+    pass
+
+dropdown = CustomDropDown()
+mainbutton = Button(text='Hello', size_hint=(None, None))
+mainbutton.bind(on_release=dropdown.open)
+dropdown.bind(on_select=lambda instance, x: setattr(mainbutton, 'text', x))
     
 class GermanyApp(App):
     def build(self):

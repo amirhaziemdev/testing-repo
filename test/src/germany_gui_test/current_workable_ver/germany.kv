@@ -1,0 +1,175 @@
+<SM>:
+	MainPage:
+		id: main_page
+		name: "main_page"
+	SettingsPage:
+		id: settings_page
+		name: "settings_page"
+
+<MainPage>:
+	BoxLayout:
+		orientation: "horizontal"
+		
+		BoxLayout:
+			orientation: "vertical"
+			size_hint: 640, 1
+			
+			KivyCamera:
+				id: kivy_camera
+				size_hint: 1, 480
+				canvas:
+					Rectangle:
+						texture: self.texture
+						size: self.width, self.height
+						pos: self.x, self.y
+			
+			Console:
+				id: console
+				size_hint: 1, 100
+				
+		MainSidebar:
+			id: sidebar
+			size_hint: 160,1
+			
+<SettingsPage>:
+	BoxLayout:
+		orientation: "horizontal"
+		
+		BoxLayout:
+			orientation: "vertical"
+			size_hint: 640, 1
+			size: 640, 480
+			
+			BoxLayout:
+				orientation: "vertical"
+				id: settings
+				size_hint: 1, 480
+				
+				Label:
+					id: threshold_value
+					size_hint: 1, 0.1
+					text: "Threshold: " + str(round(threshold.value, 2))
+				
+				Slider:
+					id: threshold
+					orientation: "horizontal"
+					size_hint: 1, 0.1
+					min: 0
+					max: 1
+					value: 0.8
+					step: 0.01
+					
+				Label:
+					id: feature_label
+					size_hint: 1, 0.1
+					text: "Current Feature to Detect"
+				
+				BoxLayout:
+					size_hint: 1, 0.7
+					CustomDropDown
+			
+			Console:
+				id: console
+				size_hint: 1, 100
+			
+		SettingsSidebar:
+			id: sidebar
+			size_hint: 160, 1
+			
+<Console>:
+	console: console
+	id: scroller
+	bar_width: 10
+	bar_color: (1, 0, 0, 1)
+	TextInput:
+		id: console
+		size_hint: None, None
+		width: scroller.width
+		height: max(self.minimum_height, scroller.height)
+		multiline: True
+		readonly: True
+		foreground_color: 1.0, 0.0, 0.0, 1
+		background_color: 0.1, 0.1, 0.1, 1
+        	
+<MainSidebar>:
+    orientation: "vertical"
+    size_hint: 160, 1
+    
+    RedButton:
+    	id: start_button
+    	text: "ON/OFF"
+    	size_hint: 1, 0.2
+    	background_color: (1.0, 0.3, 0.3, 1.0)
+    	on_press: self.cam_toggle()
+    	
+    # Placeholder for feature detection status, If doesnt change then there is a problem with detection code
+    TestLabel:
+    	id: test_label
+    	size_hint: 1, 0.2
+    	text: "STATUS"
+    	disabled: True
+    	background_disabled_normal: ''
+    
+    GenericButton:
+    	id: capture_button
+    	text: "CAPTURE"
+    	size_hint: 1, 0.2
+    	on_press: app.root.ids.main_page.ids.kivy_camera.cv2_select_roi()
+    	
+    GenericButton:
+    	id: reset_button
+    	text: "RESET"
+    	size_hint: 1, 0.2
+    	on_press: root.reset()
+    	
+    GenericButton:
+    	id: settings_button
+    	text: "SETTINGS"
+    	size_hint: 1, 0.2
+    	on_press: root.change_page()
+
+<SettingsSidebar>:
+    orientation: "vertical"
+    size_hint: 160, 1
+    
+    BoxLayout:
+    	orientation: "vertical"
+    	size_hint: 1, 0.8
+    	
+#    GenericButton:
+#    	id: default_button
+#    	text: "DEFAULTS"
+#    	size_hint: 1, 0.17
+#    	on_press: app.root.ids.settings_page.ids.console.console_write("Settings Change Back to Default Values")
+    	
+    GenericButton:
+    	id: back_button
+    	text: "BACK"
+    	size_hint: 1, 0.2
+    	on_press: root.change_page()
+    	
+<CustomDropDown>:
+    Button:
+        text: 'My first Item'
+        size_hint_y: None
+        height: 44
+        on_release: root.select('item1')
+    Label:
+        text: 'Unselectable item'
+        size_hint_y: None
+        height: 44
+    Button:
+        text: 'My second Item'
+        size_hint_y: None
+        height: 44
+        on_release: root.select('item2')
+        	
+<Button>:
+	font_size: 20
+	bold: True
+	background_color: (0.3, 0.3, 0.3, 1)
+	
+<Label>:
+	font_size: 20
+	bold: True
+	background_color: (0.3, 0.3, 0.3, 1)
