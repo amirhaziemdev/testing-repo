@@ -22,6 +22,10 @@ version 0.0.6 11032019 by Ammar
 -minor GUI changes
 
 version 0.0.7 11032019 by Ammar
+-code rewrite for KivyCamera
+
+version 0.0.8 12/3/2019 by Ammar
+-object detection is now implemented
 """
 from kivy.config import Config
 # Config.set('graphics', 'resizable', '0') # 0 being off 1 being on as in true/false
@@ -50,17 +54,18 @@ from kivy.graphics import Color, Rectangle
 
 class KivyCamera(Image):
     isRecording =  True # KivyCamera attribute for start/stop cam feed
-    isLearning = False # Attribute for getting dataset from initial capture
+    isType = 'object'
     object_ = open("object_list.txt", "r").read().split("\n")
     object_detect = object_[0]
     object_write = object_[0]
-    feature = open("feature_list.txt", "r").read().split("\n") # Current feature list
-    feature_detect = feature[0] # For detection on camera
-    feature_write = feature[0] # For writing new images to feature dir
+    object_img = ""
+    object_kp = ""
+    object_des = ""
     
     def __init__(self, **kwargs):
         super(KivyCamera, self).__init__(**kwargs)
         self.app = App.get_running_app()
+
 
         # Settings for object detection
         self.kaze = cv2.KAZE_create()
@@ -69,15 +74,16 @@ class KivyCamera(Image):
         index_params = dict(algorithm = FLANN_INDEX_KDTREE, trees = 5)
         search_params = dict(checks=50)   # or pass empty dictionary
         self.flann = cv2.FlannBasedMatcher(index_params,search_params)
-        
+        # Ready first object image
+        Clock.schedule_once(self.set_obj_img, 0)
+
         # Select external cam and get fps
         try:
-            self.capture = cv2.VideoCapture(1)
+            self.capture = cv2.VideoCapture(0)
             fps = self.capture.get(cv2.CAP_PROP_FPS)
         except:
             raise ValueError("No camera found!")
-        
-        # Set refresh rate
+        # Set refresh schedule
         Clock.schedule_interval(self.update, 1/fps)
 
     def snap(self):
@@ -87,12 +93,12 @@ class KivyCamera(Image):
     def update(self, dt):
         # Don't update if set to not recording
         if self.isRecording == True:
-            ret, xframe = self.snap()
+            ret, frame = self.snap()
             
             if ret:
                 # Do feature detection
                 # frame = self.feature_detection_lbp(xframe)
-                frame = self.object_detection(xframe)
+                frame = self.object_detection(frame)
                 
                 # Convert it to texture for display in Kivy GUI
                 frame = cv2.flip(frame, 0) # Flip v
@@ -105,9 +111,77 @@ class KivyCamera(Image):
                 # display image from the texture
                 self.texture = image_texture
 
+    def set_obj_img(self, dt=0): # Ready object image for comparison
+        # Get current object to detect
+        object_ = KivyCamera.object_detect
+
+        # Initialize var
+        img = False
+        _dir = f"template/{object_}/"
+
+        # Check directory
+        try:
+            _get_list = os.listdir(_dir)
+        except:
+            raise ValueError(f"{object_} directory doesn't exist!")
+
+        # Check if object already has image
+        for each in _get_list:
+            if each == "1.jpg":
+                img = each
+                break
+            else:
+                pass
+        if not img:
+            text = "No OBJECT found in template folder!"
+            self.app.root.ids.main_page.ids.console.console_write(text)
+            return
+
+        # Feature detection on reference image
+        img = cv2.imread(_dir+img, 0)
+        KivyCamera.object_img = img
+        KivyCamera.object_kp, KivyCamera.object_des = self.kaze.detectAndCompute(img,None)
+        text = f"{object_} is ready for detection!"
+        self.app.root.ids.main_page.ids.console.console_write(text)
+
     def object_detection(self, frame):
-        gray_f = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY)
+        # Threshold
+        MIN_MATCH_COUNT = 10
+        # Get frame and compute
+        gray_f = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        kp, des = self.kaze.detectAndCompute(gray_f, None)
+        # Feature matching
+        try:
+            match = self.flann.knnMatch(KivyCamera.object_des, des, k=2)
+            # Sort by their distance.
+            match = sorted(match, key = lambda x:x[0].distance)
+            # Ratio test, to get good matches.
+            good = [m1 for (m1, m2) in match if m1.distance < 0.7 * m2.distance]
+            # find homography matrix
+            if len(good)>MIN_MATCH_COUNT:
+                src_pts = np.float32([ KivyCamera.object_kp[m.queryIdx].pt for m in good ]).reshape(-1,1,2)
+                dst_pts = np.float32([ kp[m.trainIdx].pt for m in good ]).reshape(-1,1,2)
+                # find homography matrix in cv2.RANSAC using good match points
+                M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC,5.0)
+                h,w = KivyCamera.object_img.shape[:2]
+                pts = np.float32([ [0,0],[0,h-1],[w-1,h-1],[w-1,0] ]).reshape(-1,1,2)
+                try:
+                    # Draw box around object and put object name on top
+                    dst = cv2.perspectiveTransform(pts,M)
+                    dst2 = np.int32(dst[:1,:2])
+                    dst2 = dst2.tolist()
+                    w1,h1 = dst2[0][0]
+                    cv2.polylines(frame,[np.int32(dst)],True,(0,200,0),3, cv2.LINE_AA)
+                    cv2.putText(frame,KivyCamera.object_detect,(w1,h1-15), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,200,0), 3, cv2.LINE_AA)
+                except:
+                    pass
+        except:
+            pass
+            
         return frame
+
+    def feature_detection(self, frame):
+        pass
             
     def cv2_select_roi(self):
         # Get untouched frame for ROI selection
@@ -115,12 +189,17 @@ class KivyCamera(Image):
         
         # Get feature name and template image listing
         object_ = KivyCamera.object_write
-        feature = KivyCamera.feature_write
-        dir = f"template/{object_}/{feature}/"
+#         feature = KivyCamera.feature_write
+        if KivyCamera.isType == "object":
+            dir = f"template/{object_}/"
+#         elif KivyCamera.isType == "feature":
+#             dir = f"template/{object_}/{feature}/"
+        else: # taking account into type error
+            raise TypeError(f"{KivyCamera.isType} is not a valid type!")
 
         # Check if feature directory exist, Create new if doesnt
         try:
-            template_list = os.listdir(dir)
+            template_list = [f for f in os.listdir(dir) if os.path.isfile(os.path.join(dir, f))]
         except:
             os.mkdir(dir)
 
@@ -133,8 +212,7 @@ class KivyCamera(Image):
         
         # Text for console
         success1 = f"Image captured successfully! Image saved in {dir} as {next}.jpg"
-        success2 = f"{feature} now has {len(template_list)} numbers of data"
-        unsuccessful = "Image captureed unsuccessful"
+        unsuccessful = "Image captured unsuccessful"
         
         # Get user input on ROI
         r = cv2.selectROI("Image", im, False)
@@ -144,7 +222,6 @@ class KivyCamera(Image):
             imCrop = im[int(r[1]):int(r[1]+r[3]), int(r[0]):int(r[0]+r[2])]
             cv2.imwrite(dir+str(next)+'.jpg', imCrop)
             self.app.root.ids.main_page.ids.console.console_write(success1)
-            self.app.root.ids.main_page.ids.console.console_write(success2)
         else:
             self.app.root.ids.main_page.ids.console.console_write(unsuccessful)
         cv2.destroyAllWindows()
