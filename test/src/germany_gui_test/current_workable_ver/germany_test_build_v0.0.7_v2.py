@@ -50,6 +50,9 @@ from kivy.uix.button import Button
 from kivy.uix.label import Label
 from kivy.graphics import Color, Rectangle
 from kivy.uix.dropdown import DropDown
+from kivy.uix.slider import Slider
+import json
+from kivy.uix.popup import Popup
 
 class KivyCamera(Image):
     isDetecting =  True # KivyCamera attribute for start/stop cam feed
@@ -127,7 +130,6 @@ class KivyCamera(Image):
             imCrop = im[int(r[1]):int(r[1]+r[3]), int(r[0]):int(r[0]+r[2])]
             cv2.imwrite(dir+str(next)+'.jpg', imCrop)
             self.app.root.ids.main_page.ids.console.console_write(success1)
-            self.app.root.ids.main_page.ids.console.console_write(success2)
         else:
             self.app.root.ids.main_page.ids.console.console_write(unsuccessful)
         cv2.destroyAllWindows()
@@ -210,20 +212,62 @@ class SM(ScreenManager):
     pass
 
 class MainPage(Screen):
-    def __init__(self, **kwargs):
-        super(MainPage, self).__init__(**kwargs)
+    pass
         
 class SettingsPage(Screen):
     pass
+
+class AddFPopup(Popup):
+    def __init__(self, **kwargs):
+        super(AddFPopup, self).__init__(**kwargs)
+        self.app = App.get_running_app()
         
+    def add_feature(self):
+        self.dismiss()
+        feature = open("feature_list.txt", "a+")
+        text = self.ids.feature_name.text
+        for each in KivyCamera.feature:
+            if text == "":
+                self.app.root.ids.settings_page.ids.console.console_write(f"Invalid name!")
+                return
+            elif text == each:
+                self.app.root.ids.settings_page.ids.console.console_write(f"{text} already exist!")
+                return
+        feature.write(text+"\n")
+        self.app.root.ids.settings_page.ids.console.console_write(f"{text} has been added!")
+        
+class DelFPopup(Popup):
+    def __init__(self, **kwargs):
+        super(DelFPopup, self).__init__(**kwargs)
+        self.app = App.get_running_app()
+        
+    def del_feature(self):
+        pass
+
 class Console(ScrollView):
     console = ObjectProperty()
     def __init__(self, **kwargs):
         super(Console, self).__init__(**kwargs)
+        self.app = App.get_running_app()
+        
+        # Boot up sequence
+        Clock.schedule_once(self.start_up, 0)
+        
+    def start_up(self, dt):
+        try:
+            self.import_settings()
+            self.console_write("Settings loaded!")
+        except:
+            raise ValueError("Settings file doesnt exist")
     
     def console_write(self, text):
-        self.console.text += "[ console ]  " + text + "\n"
+        self.console.text += "[   System   ]  " + text + "\n"
         self.scroll_to(self.ids.console) # For autoscrolling
+        
+    def import_settings(self):
+        settings = open("settings.json", "r").read()
+        settings = json.loads(settings)
+        self.app.root.ids.settings_page.ids.threshold.value = settings["Settings"]["Threshold"]
         
 class MainSidebar(BoxLayout):
     def __init__(self, **kwargs):
@@ -328,13 +372,14 @@ class TestLabel(Button):
         self.background_color=(0.5, 0.0, 0.0, 1)
         self.text = "BAD!"
         
-class CustomDropDown(DropDown):
-    pass
-
-dropdown = CustomDropDown()
-mainbutton = Button(text='Hello', size_hint=(None, None))
-mainbutton.bind(on_release=dropdown.open)
-dropdown.bind(on_select=lambda instance, x: setattr(mainbutton, 'text', x))
+class ThresholdSlider(Slider):
+    def __init__(self, **kwargs):
+        super(ThresholdSlider, self).__init__(**kwargs)
+        self.app = App.get_running_app()
+    
+    def on_touch_up(self, touch):
+        if self.collide_point(*touch.pos):
+            self.app.root.ids.settings_page.ids.console.console_write(f"Threshold value has been changed to {self.value}")
     
 class GermanyApp(App):
     def build(self):

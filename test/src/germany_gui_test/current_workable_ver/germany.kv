@@ -1,3 +1,27 @@
+#:import Factory kivy.factory.Factory
+<AddFPopup>:
+    auto_dismiss: False
+    size_hint: None, None
+    size: 400, 200
+    title: "Adding a feature!"
+    BoxLayout:
+    	orientation: "vertical"
+    	Label:
+    		text: "Feature Name:"
+    		size_hint: 1, 0.2
+    	BoxLayout:
+    		size_hint: 1, 0.1
+    	TextInput:
+    		id: feature_name
+    		size_hint: 1, 0.2
+    		multiline: False
+    	BoxLayout:
+    		size_hint: 1, 0.2
+	    Button:
+	    	size_hint: 1, 0.3
+	        text: "Submit"
+	        on_press: root.add_feature()
+
 <SM>:
 	MainPage:
 		id: main_page
@@ -50,7 +74,7 @@
 					size_hint: 1, 0.1
 					text: "Threshold: " + str(round(threshold.value, 2))
 				
-				Slider:
+				ThresholdSlider:
 					id: threshold
 					orientation: "horizontal"
 					size_hint: 1, 0.1
@@ -62,11 +86,10 @@
 				Label:
 					id: feature_label
 					size_hint: 1, 0.1
-					text: "Current Feature to Detect"
+					text: "Feature to detect:"
 				
 				BoxLayout:
 					size_hint: 1, 0.7
-					CustomDropDown
 			
 			Console:
 				id: console
@@ -119,6 +142,7 @@
     GenericButton:
     	id: reset_button
     	text: "RESET"
+    	disabled: True
     	size_hint: 1, 0.2
     	on_press: root.reset()
     	
@@ -134,35 +158,32 @@
     
     BoxLayout:
     	orientation: "vertical"
-    	size_hint: 1, 0.8
+    	size_hint: 1, 0.2
     	
-#    GenericButton:
-#    	id: default_button
-#    	text: "DEFAULTS"
-#    	size_hint: 1, 0.17
-#    	on_press: app.root.ids.settings_page.ids.console.console_write("Settings Change Back to Default Values")
+    GenericButton:
+    	id: addf_button
+    	text: "ADD FEATURE"
+    	size_hint: 1, 0.2
+    	on_press: Factory.AddFPopup().open()
+    	
+    GenericButton:
+    	id: delf_button
+    	text: "DEL FEATURE"
+    	size_hint: 1, 0.2
+    	on_press: app.root.ids.settings_page.ids.console.console_write("Deleting Feature!")
+    	
+    GenericButton:
+    	id: default_button
+    	text: "RESET"
+    	disabled: True
+    	size_hint: 1, 0.2
+    	on_press: app.root.ids.settings_page.ids.console.console_write("Settings Change Back to Default Values")
     	
     GenericButton:
     	id: back_button
     	text: "BACK"
     	size_hint: 1, 0.2
     	on_press: root.change_page()
-    	
-<CustomDropDown>:
-    Button:
-        text: 'My first Item'
-        size_hint_y: None
-        height: 44
-        on_release: root.select('item1')
-    Label:
-        text: 'Unselectable item'
-        size_hint_y: None
-        height: 44
-    Button:
-        text: 'My second Item'
-        size_hint_y: None
-        height: 44
-        on_release: root.select('item2')
         	
 <Button>:
 	font_size: 20
