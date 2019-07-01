@@ -15,8 +15,8 @@ import time
 #Switches
 # camera = input('Please enter camera number, 0 for internal, 1 for external') #0 for internal webcam ;  #1 for external camera
 camera = 0
-flip = False #true if you want to flip the view
-darkbg = False
+flip = True #true if you want to flip the view
+darkbg = True
 overlay = True
 
 #Thresholds
@@ -130,6 +130,8 @@ def dot_detection(img):
             else:
                 continue
     global feed
+    # feed = gray
+    # feed = thresh
     feed = image
     return feed
 
