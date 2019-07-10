@@ -1,2 +1,5 @@
 # testing-repo
-Repo for testing GIT functionalities
+Repo for all computer vision code prior to using GitHub.
+
+
+
