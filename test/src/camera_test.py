@@ -14,7 +14,7 @@ import time
 
 #Switches
 # camera = input('Please enter camera number, 0 for internal, 1 for external') #0 for internal webcam ;  #1 for external camera
-camera = 0
+camera = [0,1,-1]
 flip = True #true if you want to flip the view
 darkbg = True
 overlay = True
@@ -26,7 +26,10 @@ d = 15 #cm, this needs to be modified as appropriate
 de = 40 #cm, distance from camera installation to surface
 f = 0.375 #factor by which the distance from camera is multiplied
 
-cap = cv2.VideoCapture(int(camera))
+try:
+    cap = cv2.VideoCapture(int(camera(0)))
+except:
+    print('No camera detected! Change camera index or connect a camera')
 
           
 def main():
